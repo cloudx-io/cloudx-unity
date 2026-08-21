@@ -12,19 +12,11 @@ banner, MREC, interstitial and rewarded ads.
 Requirements:
 
 - Unity 6 LTS `6000.0.60f1` (see `ProjectSettings/ProjectVersion.txt`)
-- iOS: Xcode and `xcbeautify` (`brew install xcbeautify`)
+- iOS: Xcode
 - Android: the Unity Android Build Support module
 
-Build and run on a connected device:
-
-```bash
-./scripts/build-and-run-ios.sh --device
-./scripts/build-and-run-android.sh
-```
-
-The project ships configured for the iOS device SDK, so the iOS script needs `--device`. To run it on
-a simulator instead, first switch Project Settings > Player > Other Settings > Target SDK to
-Simulator SDK.
+The project ships configured for the iOS device SDK. To run it on a simulator instead, switch
+Project Settings > Player > Other Settings > Target SDK to Simulator SDK.
 
 The demo ships with CloudX demo dashboard IDs so it runs without an account. To point it at your own
 CloudX app:
