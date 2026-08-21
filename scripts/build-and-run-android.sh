@@ -223,8 +223,10 @@ adb install -r "$OUTPUT_FILE" || {
 
 # Launch the app. The package comes from Player Settings, not a literal, so this
 # keeps working after you point the sample at your own bundle identifier.
+# tr strips the CR a Windows checkout leaves behind; the || true keeps a missing
+# or unreadable settings file on the warning path below instead of tripping set -e.
 ANDROID_PACKAGE=$(awk '/^  applicationIdentifier:/{f=1;next} f&&/^    Android:/{print $2;exit} f&&/^  [A-Za-z]/{exit}' \
-    "$REPO_ROOT/ProjectSettings/ProjectSettings.asset")
+    "$REPO_ROOT/ProjectSettings/ProjectSettings.asset" 2>/dev/null | tr -d '\r' || true)
 
 LAUNCHED=true
 if [[ -z "$ANDROID_PACKAGE" ]]; then
