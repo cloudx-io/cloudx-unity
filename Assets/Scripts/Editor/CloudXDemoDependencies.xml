@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dependencies>
+    <androidPackages>
+        <repositories>
+            <repository>https://dl-maven-android.mintegral.com/repository/mbridge_android_sdk_oversea</repository>
+            <repository>https://verve.jfrog.io/artifactory/verve-gradle-release</repository>
+            <repository>https://artifact.bytedance.com/repository/pangle</repository>
+            <repository>https://artifact.taurusx.com/artifactory/taurusx-sdk/</repository>
+        </repositories>
+        <!-- CloudX Adapters -->
+        <androidPackage spec="io.cloudx:adapter-meta:6.22.0.0"/>
+        <androidPackage spec="io.cloudx:adapter-vungle:7.7.7.0"/>
+        <androidPackage spec="io.cloudx:adapter-inmobi:11.4.0.1"/>
+        <androidPackage spec="io.cloudx:adapter-mintegral:17.1.71.1"/>
+        <androidPackage spec="io.cloudx:adapter-unityads:4.19.0.1"/>
+        <androidPackage spec="io.cloudx:adapter-magnite:3.2.0"/>
+        <androidPackage spec="io.cloudx:adapter-moloco:4.11.0.0"/>
+        <androidPackage spec="io.cloudx:adapter-verve:3.9.0.1"/>
+        <androidPackage spec="io.cloudx:adapter-googlewaterfall:25.2.0.3"/>
+        <androidPackage spec="io.cloudx:adapter-digitalturbine:8.4.7.1"/>
+        <androidPackage spec="io.cloudx:adapter-pangle:8.2.0.4.0"/>
+        <androidPackage spec="io.cloudx:adapter-mobilefuse:1.11.0.1"/>
+        <androidPackage spec="io.cloudx:adapter-taurusx:1.18.3.0"/>
+    </androidPackages>
+    <iosPods>
+        <!-- CloudX Adapters — independent versions (3.5.0+). -->
+        <iosPod name="CloudXMetaAdapter" version="6.22.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXVungleAdapter" version="7.7.4.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXInMobiAdapter" version="11.3.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXMintegralAdapter" version="8.1.5.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXUnityAdsAdapter" version="4.19.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXMagniteAdapterV2" version="1.0.0.1" minTargetSdk="13.0"/>
+        <iosPod name="CloudXMolocoAdapter" version="4.8.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXVerveAdapter" version="3.9.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXGoogleWaterfallAdapter" version="13.6.0.2" minTargetSdk="13.0"/>
+        <!-- Disabled in the iOS demo because CloudXDigitalTurbineAdapter 8.4.8.0 currently crashes on simulator only. -->
+        <!-- <iosPod name="CloudXDigitalTurbineAdapter" version="8.4.8.0" minTargetSdk="13.0"/> -->
+        <iosPod name="CloudXPangleAdapter" version="8.2.0.7.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXMobileFuseAdapter" version="1.11.0.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXTaurusXAdapter" version="1.18.1.0" minTargetSdk="13.0"/>
+    </iosPods>
+</dependencies>

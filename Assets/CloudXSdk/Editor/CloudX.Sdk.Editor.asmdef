@@ -1,0 +1,10 @@
+{
+    "name": "CloudX.Sdk.Editor",
+    "references": [
+        "CloudX.Sdk"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": []
+}

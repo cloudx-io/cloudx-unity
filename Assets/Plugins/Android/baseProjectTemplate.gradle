@@ -1,0 +1,14 @@
+plugins {
+    /*
+     * Android Gradle Plugin must be 8.9.1+ for Meta Audience Network 6.22 /
+     * androidx.browser:1.9.0 (pulled by CloudX adapter-meta:6.22.0.0).
+     * Keep compatible with the Gradle wrapper version used by Unity export.
+     */
+    id 'com.android.application' version '8.9.3' apply false
+    id 'com.android.library' version '8.9.3' apply false
+    **BUILD_SCRIPT_DEPS**
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}
