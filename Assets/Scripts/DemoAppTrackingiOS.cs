@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using AOT;
 using UnityEngine;
 
-namespace CloudX.DemoAdvanced
+namespace CloudX.Demo
 {
     /// <summary>
     /// Demo-app App Tracking Transparency gate, iOS only. Requests ATT once per

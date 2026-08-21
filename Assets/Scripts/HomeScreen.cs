@@ -1,6 +1,6 @@
 using System.Collections;
 using CloudX;
-using CloudX.DemoAdvanced;
+using CloudX.Demo;
 using UnityEngine;
 
 /*
@@ -160,7 +160,12 @@ public class HomeScreen : MonoBehaviour
         CloudXSdk.SetHashedUserId("test-hashed-user-id-12345");
         CloudXSdk.SetUserKeyValue("user_level", "premium");
         CloudXSdk.SetAppKeyValue("app_version", "demo-1337");
-        /* Manual GDPR / CCPA overrides when you are not using a CMP. */
+        /*
+         * Manual GDPR / CCPA overrides when you are not using a CMP. The demo
+         * passes literals so it always serves; do not copy that. Pass what the
+         * user actually chose in your consent flow, because asserting consent
+         * the user never gave is a compliance problem, not a default.
+         */
         CloudXSdk.SetHasUserConsent(true);
         CloudXSdk.SetDoNotSell(false);
 

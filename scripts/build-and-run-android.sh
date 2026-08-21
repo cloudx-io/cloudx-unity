@@ -221,10 +221,19 @@ adb install -r "$OUTPUT_FILE" || {
     exit 1
 }
 
-# Launch the app
-adb shell am start -n io.cloudx.sample/com.unity3d.player.UnityPlayerActivity || {
-    print_warning "Failed to launch app (may need manual start)"
-}
+# Launch the app. The package comes from Player Settings, not a literal, so this
+# keeps working after you point the sample at your own bundle identifier.
+ANDROID_PACKAGE=$(awk '/^  applicationIdentifier:/{f=1;next} f&&/^    Android:/{print $2;exit} f&&/^  [A-Za-z]/{exit}' \
+    "$REPO_ROOT/ProjectSettings/ProjectSettings.asset")
+
+LAUNCHED=true
+if [[ -z "$ANDROID_PACKAGE" ]]; then
+    print_warning "Could not read the Android package from ProjectSettings; skipping launch"
+    LAUNCHED=false
+elif ! adb shell am start -n "$ANDROID_PACKAGE/com.unity3d.player.UnityPlayerActivity"; then
+    print_warning "Failed to launch $ANDROID_PACKAGE (may need manual start)"
+    LAUNCHED=false
+fi
 
 # Calculate total build time
 END_TIME=$(date +%s)
@@ -236,7 +245,9 @@ FILE_SIZE=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
 print_success "Build completed successfully!"
 print_success "Unity export: ${UNITY_TIME}s | Gradle build: ${GRADLE_TIME}s | Total: ${TOTAL_TIME_MIN}m ${TOTAL_TIME_SEC}s"
 print_success "APK: $OUTPUT_FILE ($FILE_SIZE)"
-print_success "App launched on device"
+if [[ "$LAUNCHED" == true ]]; then
+    print_success "App launched on device"
+fi
 
 # Return to repo root
 cd "$REPO_ROOT"
