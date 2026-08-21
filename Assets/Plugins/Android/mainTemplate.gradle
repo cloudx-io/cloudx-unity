@@ -1,0 +1,74 @@
+apply plugin: 'com.android.library'
+apply from: '../shared/keepUnitySymbols.gradle'
+**APPLY_PLUGINS**
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+// Android Resolver Dependencies Start
+    implementation 'io.cloudx:adapter-digitalturbine:8.4.7.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:20
+    implementation 'io.cloudx:adapter-googlewaterfall:25.2.0.3' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:19
+    implementation 'io.cloudx:adapter-inmobi:11.4.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:13
+    implementation 'io.cloudx:adapter-magnite:3.2.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:16
+    implementation 'io.cloudx:adapter-meta:6.22.0.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:11
+    implementation 'io.cloudx:adapter-mintegral:17.1.71.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:14
+    implementation 'io.cloudx:adapter-mobilefuse:1.11.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:22
+    implementation 'io.cloudx:adapter-moloco:4.11.0.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:17
+    implementation 'io.cloudx:adapter-pangle:8.2.0.4.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:21
+    implementation 'io.cloudx:adapter-taurusx:1.18.3.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:23
+    implementation 'io.cloudx:adapter-unityads:4.19.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:15
+    implementation 'io.cloudx:adapter-verve:3.9.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:18
+    implementation 'io.cloudx:adapter-vungle:7.7.7.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:12
+    implementation 'io.cloudx:sdk:4.5.1' // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11
+// Android Resolver Dependencies End
+**DEPS**}
+
+// Android Resolver Exclusions Start
+android {
+  packaging {
+      exclude ('/lib/armeabi/*' + '*')
+      exclude ('/lib/armeabi-v7a/*' + '*')
+      exclude ('/lib/mips/*' + '*')
+      exclude ('/lib/mips64/*' + '*')
+      exclude ('/lib/x86/*' + '*')
+      exclude ('/lib/x86_64/*' + '*')
+  }
+}
+// Android Resolver Exclusions End
+android {
+    namespace "com.unity3d.player"
+    ndkPath "**NDKPATH**"
+    ndkVersion "**NDKVERSION**"
+
+    compileSdk **APIVERSION**
+    buildToolsVersion = "**BUILDTOOLS**"
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        minSdk **MINSDK**
+        targetSdk **TARGETSDK**
+        ndk {
+            abiFilters **ABIFILTERS**
+            debugSymbolLevel **DEBUGSYMBOLLEVEL**
+        }
+        versionCode **VERSIONCODE**
+        versionName '**VERSIONNAME**'
+        consumerProguardFiles 'proguard-unity.txt'**USER_PROGUARD**
+**DEFAULT_CONFIG_SETUP**
+    }
+
+    lint {
+        abortOnError false
+    }
+
+    androidResources {
+        noCompress = **BUILTIN_NOCOMPRESS** + unityStreamingAssets.tokenize(', ')
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }**PACKAGING**
+}
+**IL_CPP_BUILD_SETUP**
+**SOURCE_BUILD_SETUP**
+**EXTERNAL_SOURCES**
