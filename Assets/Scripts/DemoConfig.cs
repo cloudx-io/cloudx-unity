@@ -8,6 +8,13 @@
  * integration, and set Automatic refresh to Disabled on the banner unit in
  * the AdMob console: the Unity plugin cannot control it, and a
  * refreshing AdMob banner would replace the ad the demo flow decided to show.
+ *
+ * Test mode is server-controlled: register this device's advertising ID in
+ * the CloudX dashboard, not here. That ID reads back as all zeros on an
+ * opted-out device -- App Tracking Transparency declined on iOS, ad
+ * personalization off on Android -- and a zeroed ID is a well-formed UUID
+ * that the dashboard accepts and then never matches. The demo logs the ID
+ * and says which of the two you have; see README.md > Test devices.
  */
 public static class DemoConfig
 {
