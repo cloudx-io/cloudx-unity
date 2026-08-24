@@ -163,6 +163,22 @@ app or the SDK gets no fill.
 The AdMob ad units in `FirstLookConfig.cs` are Google's official test units and stay valid as they
 are; replace them with your own AdMob units when you take this into production.
 
+### Test devices
+
+Test mode is server-controlled. A device serves CloudX test ads because its advertising ID is on the
+test-device list in your dashboard, not because of anything in this build — there is no code change
+that turns it on.
+
+The trap is that the advertising ID reads back as all zeros
+(`00000000-0000-0000-0000-000000000000`) when the device is opted out. That is a well-formed UUID, so
+it pastes into the dashboard without complaint and then matches nothing, which looks exactly like a
+wrong dashboard entry rather than a consent problem. Check the device first:
+
+| Platform | The ID zeroes when |
+| --- | --- |
+| iOS | App Tracking Transparency was not authorized. The demo prompts on launch; iOS only asks once per install, so a refusal needs a reinstall to undo. |
+| Android | Ad personalization is off (Settings > Google > Ads > Delete advertising ID), or the app targets SDK 33+ without declaring `com.google.android.gms.permission.AD_ID`. |
+
 ### iOS target SDK
 
 The project is configured for the **Simulator** SDK. To build for a physical iOS device, switch
