@@ -172,7 +172,15 @@ that turns it on.
 The trap is that the advertising ID reads back as all zeros
 (`00000000-0000-0000-0000-000000000000`) when the device is opted out. That is a well-formed UUID, so
 it pastes into the dashboard without complaint and then matches nothing, which looks exactly like a
-wrong dashboard entry rather than a consent problem. Check the device first:
+wrong dashboard entry rather than a consent problem.
+
+So the demo reads the ID for you. It logs it in full at startup under
+`[CloudXUnityDemo] Advertising ID:` — that string is what you paste into the dashboard — and the
+status line on the General screen carries a short verdict. The verdict is about the health of the
+ID, never about whether your dashboard entry took effect: no CloudX SDK exposes the resolved test
+flag, so "ok" means the ID is worth registering, not that it is registered.
+
+If it comes back zeroed, check the device:
 
 | Platform | The ID zeroes when |
 | --- | --- |
