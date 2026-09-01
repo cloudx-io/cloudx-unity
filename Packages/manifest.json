@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.google.ads.mobile": "11.3.0",
     "com.unity.2d.sprite": "1.0.0",
     "com.unity.2d.tilemap": "1.0.0",
     "com.unity.ai.navigation": "2.0.9",
@@ -52,6 +53,14 @@
       "url": "https://unityregistry-pa.googleapis.com",
       "scopes": [
         "com.google"
+      ]
+    },
+    {
+      "name": "OpenUPM",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.google.ads.mobile",
+        "com.google.external-dependency-manager"
       ]
     }
   ]

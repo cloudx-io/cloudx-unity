@@ -17,7 +17,7 @@ namespace CloudX.Demo
      * themselves; this is the demo doing exactly that.
      *
      * Any entry point that calls CloudXSdk.Initialize must yield on
-     * EnsureRequested first. Here that is HomeScreen.Start. The gate is
+     * EnsureRequested first. Here that is GeneralScreen.Start and FirstLookScreen.Start. The gate is
      * idempotent, so gating every entry point costs nothing.
      */
     public static class DemoAppTrackingiOS

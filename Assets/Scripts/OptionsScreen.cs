@@ -5,12 +5,14 @@ using UnityEngine.UI;
 
 /*
  * Demo-only launch screen. Picks which demo flow to enter. General routes to
- * HomeScene, where the CloudX integration sample lives; the other two are WIP.
+ * GeneralScene, where the CloudX integration sample lives; First Look routes to
+ * FirstLookScene, the CloudX-first-with-AdMob-fallback template; Arbiter/TPA is WIP.
  */
 public class OptionsScreen : MonoBehaviour
 {
     private const string TAG = "CloudXUnityDemo";
-    private const string HomeSceneName = "HomeScene";
+    private const string GeneralSceneName = "GeneralScene";
+    private const string FirstLookSceneName = "FirstLookScene";
 
     public Button generalButton;
     public Button firstLookButton;
@@ -26,10 +28,14 @@ public class OptionsScreen : MonoBehaviour
     private void OpenGeneral()
     {
         Debug.Log($"[{TAG}] Opening the General demo");
-        SceneManager.LoadScene(HomeSceneName);
+        SceneManager.LoadScene(GeneralSceneName);
     }
 
-    private void OpenFirstLook() => throw new NotImplementedException("First Look demo is not implemented yet");
+    private void OpenFirstLook()
+    {
+        Debug.Log($"[{TAG}] Opening the First Look demo");
+        SceneManager.LoadScene(FirstLookSceneName);
+    }
 
     private void OpenArbiterTpa() => throw new NotImplementedException("Arbiter/TPA demo is not implemented yet");
 }

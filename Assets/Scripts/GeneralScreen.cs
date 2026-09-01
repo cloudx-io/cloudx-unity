@@ -7,15 +7,15 @@ using UnityEngine;
  * CloudX Unity integration sample.
  *
  * Replace DemoConfig IDs with values from your CloudX dashboard.
- * This class is the SDK call sequence. HomeScreenUi is demo-only layout and is
+ * This class is the SDK call sequence. AdScreenUi is demo-only layout and is
  * not part of the integration.
  *
  * Flow: request iOS ATT -> optional privacy / user data -> subscribe to init
  * callbacks -> CloudXSdk.Initialize -> create or load ads only after
  * OnSdkInitialized.
  */
-[RequireComponent(typeof(HomeScreenUi))]
-public class HomeScreen : MonoBehaviour
+[RequireComponent(typeof(AdScreenUi))]
+public class GeneralScreen : MonoBehaviour
 {
     private const string TAG = "CloudXUnityDemo";
 
@@ -36,7 +36,7 @@ public class HomeScreen : MonoBehaviour
 
     private static void Log(string message) => Debug.Log($"[{TAG}] {message}");
 
-    private HomeScreenUi _ui;
+    private AdScreenUi _ui;
     private bool _initAnswered;
     private bool isBannerShown;
     private bool _bannerCreated;
@@ -50,7 +50,7 @@ public class HomeScreen : MonoBehaviour
 
     void Awake()
     {
-        _ui = GetComponent<HomeScreenUi>();
+        _ui = GetComponent<AdScreenUi>();
     }
 
     IEnumerator Start()
@@ -130,9 +130,9 @@ public class HomeScreen : MonoBehaviour
         }
     }
 
-    private HomeScreenUi.Actions CreateUiActions()
+    private AdScreenUi.Actions CreateUiActions()
     {
-        return new HomeScreenUi.Actions
+        return new AdScreenUi.Actions
         {
             ShowBanner = CycleBanner,
             ToggleMrec = ToggleMrecVisibility,
@@ -150,7 +150,7 @@ public class HomeScreen : MonoBehaviour
     private void InitializeCloudX()
     {
         if (_ui == null)
-            _ui = GetComponent<HomeScreenUi>();
+            _ui = GetComponent<AdScreenUi>();
 
         _ui.SetInitializationStatus("Status: Initializing");
 

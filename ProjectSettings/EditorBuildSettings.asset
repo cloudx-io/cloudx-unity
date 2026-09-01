@@ -9,7 +9,10 @@ EditorBuildSettings:
     path: Assets/Scenes/OptionsScene.unity
     guid: 93b509d57c2ce434b99c7acdea49b27d
   - enabled: 1
-    path: Assets/Scenes/HomeScene.unity
+    path: Assets/Scenes/GeneralScene.unity
     guid: 905d84df061d8499a87c596f94b99d76
+  - enabled: 1
+    path: Assets/Scenes/FirstLookScene.unity
+    guid: 33c712e03aba7427695d0bd645dcd1f8
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

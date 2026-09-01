@@ -4,11 +4,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /*
- * Demo-only UI. Publishers can ignore this file — CloudX calls live in HomeScreen.
+ * Demo-only UI. Publishers can ignore this file — CloudX calls live in GeneralScreen.
  * This class wires buttons and reflows the sample layout on rotate.
  */
 [RequireComponent(typeof(Canvas))]
-public class HomeScreenUi : MonoBehaviour
+public class AdScreenUi : MonoBehaviour
 {
     private const string TAG = "CloudXUnityDemo";
 
@@ -75,7 +75,7 @@ public class HomeScreenUi : MonoBehaviour
 
     private static void Log(string message) => Debug.Log($"[{TAG}] {message}");
 
-    /* Wires the on-screen buttons to the CloudX actions in HomeScreen. */
+    /* Wires the on-screen buttons to the CloudX actions in GeneralScreen. */
     public void Bind(Actions actions)
     {
         _actions = actions;
@@ -140,7 +140,7 @@ public class HomeScreenUi : MonoBehaviour
     /*
      * Portrait keeps the scene RectTransforms. Landscape insets a full-height viewport so the
      * native vertical banner has empty left/right gutters, and reparents the same controls into
-     * two fractional columns. Switching horizontal <-> vertical on rotate is HomeScreen's job
+     * two fractional columns. Switching horizontal <-> vertical on rotate is GeneralScreen's job
      * via OnOrientationChanged.
      */
     private void SetupOrientationLayout()
