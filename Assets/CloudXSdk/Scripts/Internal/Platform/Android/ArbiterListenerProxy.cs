@@ -17,11 +17,14 @@ internal sealed class ArbiterListenerProxy : AndroidJavaProxy
         _onCompleted = onCompleted;
     }
 
-    public void onCompleted(AndroidJavaObject result)
+    public void onCompleted(AndroidJavaObject result) => JniCallbackGuard.Run(OnCompletedName, () =>
     {
         CloudXSdk.Log.LogDebug(() => "ArbiterListenerProxy.onCompleted received");
         var arbiterResult = result.ToCloudXArbiterResult();
-        UnityMainThreadDispatcher.Instance().Enqueue(() => _onCompleted(arbiterResult));
-    }
+        CallbackDispatcher.Dispatch(OnCompletedName, keepInBackground: false,
+            () => _onCompleted(arbiterResult));
+    });
+
+    private const string OnCompletedName = "CloudXArbiterListener.onCompleted";
 }
 }

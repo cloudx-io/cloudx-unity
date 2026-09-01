@@ -4,8 +4,9 @@ using CloudX.Internal.Threading;
 namespace CloudX
 {
     /// <summary>
-    /// Ensures UnityMainThreadDispatcher is initialized before any JNI callbacks fire.
-    /// This guarantees that all Android native callbacks are dispatched to Unity's main thread.
+    /// Ensures UnityMainThreadDispatcher is initialized before any native callbacks fire, so
+    /// CallbackDispatcher can marshal callbacks to Unity's main thread (see
+    /// CloudXSdk.InvokeEventsOnUnityMainThread for which callbacks are marshalled).
     /// Initializes automatically before any scene loads - no manual setup required.
     /// </summary>
     internal class UnityMainThreadInitializer : MonoBehaviour

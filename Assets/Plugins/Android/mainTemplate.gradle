@@ -18,7 +18,7 @@ dependencies {
     implementation 'io.cloudx:adapter-unityads:4.19.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:15
     implementation 'io.cloudx:adapter-verve:3.9.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:18
     implementation 'io.cloudx:adapter-vungle:7.7.7.0' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:12
-    implementation 'io.cloudx:sdk:4.5.1' // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11
+    implementation 'io.cloudx:sdk:4.6.0' // Assets/CloudXSdk/Editor/CloudXDependencies.xml:13
 // Android Resolver Dependencies End
 **DEPS**}
 

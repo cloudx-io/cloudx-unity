@@ -9,12 +9,36 @@ namespace CloudX
         internal static bool TryWrite(CloudXRevenueData? data, out string? json)
         {
             json = null;
-            if (data == null) return false;
-            if (double.IsNaN(data.Revenue) || double.IsInfinity(data.Revenue)) return false;
-            if (string.IsNullOrWhiteSpace(data.AdFormat)) return false;
+            if (data == null)
+            {
+                CloudXSdk.Log.LogWarning(() => "ReportRevenueData ignored: revenue data is null");
+                return false;
+            }
+
+            if (double.IsNaN(data.Revenue) || double.IsInfinity(data.Revenue))
+            {
+                var revenue = data.Revenue;
+                CloudXSdk.Log.LogWarning(() =>
+                    $"ReportRevenueData ignored: Revenue must be a finite number, got {revenue}");
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(data.AdFormat))
+            {
+                CloudXSdk.Log.LogWarning(() => "ReportRevenueData ignored: AdFormat is empty");
+                return false;
+            }
 
             var platform = data.Platform?.Name;
-            if (string.IsNullOrWhiteSpace(platform)) return false;
+            if (string.IsNullOrWhiteSpace(platform))
+            {
+                /*
+                 * CloudXRevenuePlatform rejects a blank name in its own constructor, so the
+                 * only way to land here is a null Platform. Name that, not the name field.
+                 */
+                CloudXSdk.Log.LogWarning(() => "ReportRevenueData ignored: Platform is missing");
+                return false;
+            }
 
             string? precision = null;
             if (data.Precision.HasValue)

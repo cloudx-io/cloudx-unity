@@ -31,7 +31,7 @@ Exports an Xcode project from Unity, builds with `xcodebuild`, then installs and
 | `-h`, `--help` | Usage |
 
 Needs Xcode and `xcbeautify` (`brew install xcbeautify`), except with `--open-xcode`. The project is
-configured for the device SDK, so use `--device` unless you switch Target SDK in Player Settings.
+configured for the simulator SDK, so switch Target SDK in Player Settings before using `--device`.
 
 ## Unity resolution
 

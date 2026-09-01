@@ -260,20 +260,30 @@ namespace CloudX.IOS
 
         public IOSDelegate()
         {
-            _instance = this;
-            
 #if UNITY_IOS && !UNITY_EDITOR
+            _instance = this;
+
             // Register the callback with native code
             _CLXSetBackgroundCallback(BackgroundCallback);
             CloudXSdk.Log.LogDebug(() => "IOSDelegate initialized - background callback registered");
+#else
+            /*
+             * Single enforcement point for "only iOS code runs in the iOS delegate".
+             * CloudXSdk builds this delegate only for an iOS player, so constructing it
+             * anywhere else means the platform selection was bypassed. Failing here
+             * makes every off-iOS body in this file unreachable, which is why the void
+             * methods can stay silent no-ops.
+             */
+            throw NotOnIOS("constructor");
 #endif
         }
 
         #region Callback Handler
 
         /// <summary>
-        /// Static callback invoked by native code. Must be static with MonoPInvokeCallback.
-        /// Parses JSON and routes to appropriate event handlers.
+        /// Static callback invoked by native code on a serial background queue thread. Must be static
+        /// with MonoPInvokeCallback. Parses JSON and routes to appropriate event handlers; everything it
+        /// touches (statics, ConcurrentDictionary, UnityMainThreadDispatcher.Enqueue, Debug.Log) is thread-safe.
         /// </summary>
         [MonoPInvokeCallback(typeof(CLXUnityBackgroundCallback))]
         private static void BackgroundCallback(string propsStr)
@@ -283,6 +293,7 @@ namespace CloudX.IOS
                 return;
             }
 
+            string? eventName = null;
             try
             {
                 var props = Json.Parse(propsStr) as Dictionary<string, object>;
@@ -292,17 +303,37 @@ namespace CloudX.IOS
                     return;
                 }
 
-                var eventName = props["name"] as string;
+                eventName = props["name"] as string;
+                if (eventName == null)
+                {
+                    CloudXSdk.Log.LogError(() => $"Invalid callback JSON (name is not a string): {propsStr}");
+                    return;
+                }
                 CloudXSdk.Log.LogDebug(() => $"iOS callback received: {eventName}");
 
                 // Route to appropriate handler
-                HandleEvent(eventName!, props);
+                HandleEvent(eventName, props);
             }
             catch (Exception e)
             {
-                CloudXSdk.Log.LogError(() => $"Error handling iOS callback: {e.Message}");
+                // Publisher handler exceptions are caught closer to the handler (CallbackInvoker /
+                // CallbackDispatcher); this guards JSON parsing and routing at the P/Invoke boundary.
+                CloudXSdk.Log.LogError(() => $"Error handling iOS callback {eventName ?? "<unparsed>"}: {e.GetType().Name}: {e.Message}", e);
             }
         }
+
+        /*
+         * Events whose per-event default is the native callback thread when
+         * CloudXSdk.InvokeEventsOnUnityMainThread is unset: revenue for the fullscreen formats
+         * only. Names must match the HandleEvent switch cases verbatim; internal so tests can
+         * assert the exact membership.
+         */
+        internal static readonly HashSet<string> BackgroundEventNames = new HashSet<string>
+        {
+            "OnInterstitialAdRevenuePaidEvent",
+            "OnAppOpenAdRevenuePaidEvent",
+            "OnRewardedAdRevenuePaidEvent",
+        };
 
         private static void HandleEvent(string eventName, Dictionary<string, object> props)
         {
@@ -311,14 +342,18 @@ namespace CloudX.IOS
             var ad = CreateCloudXAd(props);
             var error = CreateCloudXError(props);
 
-            // IsRevenue event is special as we do *not* want it on the UnityMainThread
-            if (TryDispatchRevenueEvent(eventName, ad))
-            {
-                return;
-            }
-
-            // Dispatch all events to the main thread to ensure UI updates work correctly
-            UnityMainThreadDispatcher.Instance().Enqueue(() => 
+            /*
+             * Fullscreen revenue events default to the native callback thread: the Unity player is
+             * paused or covered while the ad shows, so main-thread delivery would wait until the ad
+             * closes. Banner/MREC revenue and every other event default to the Unity main thread.
+             * CloudXSdk.InvokeEventsOnUnityMainThread overrides both. CLXUnityAdManager forwards
+             * every event on a serial background queue, so this method runs off the Unity main
+             * thread and must only touch thread-safe state; "inline" below means that background
+             * thread. The set is an explicit name list (not a suffix match) so renaming an event
+             * string cannot silently change its thread.
+             */
+            var keepInBackground = BackgroundEventNames.Contains(eventName);
+            CallbackDispatcher.Dispatch(eventName, keepInBackground, () =>
             {
                 switch (eventName)
                 {
@@ -345,6 +380,19 @@ namespace CloudX.IOS
                     case "OnBannerAdClickedEvent":
                         _instance?.BannerAdClicked?.Invoke(ad);
                         break;
+                    case "OnBannerAdRevenuePaidEvent":
+                        _instance?.BannerAdRevenuePaid?.Invoke(ad);
+                        break;
+                    /*
+                     * Expand/collapse are legitimate native events with no Unity API surface yet
+                     * (Android's listener methods are equally empty); handled as no-ops so they do
+                     * not trip the unhandled-event error below.
+                     */
+                    case "OnBannerAdExpandedEvent":
+                    case "OnBannerAdCollapsedEvent":
+                    case "OnMrecAdExpandedEvent":
+                    case "OnMrecAdCollapsedEvent":
+                        break;
 
                     // MREC Events
                     case "OnMrecAdLoadedEvent":
@@ -355,6 +403,9 @@ namespace CloudX.IOS
                         break;
                     case "OnMrecAdClickedEvent":
                         _instance?.MrecAdClicked?.Invoke(ad);
+                        break;
+                    case "OnMrecAdRevenuePaidEvent":
+                        _instance?.MrecAdRevenuePaid?.Invoke(ad);
                         break;
 
                     // Interstitial Events
@@ -378,6 +429,9 @@ namespace CloudX.IOS
                     case "OnInterstitialAdClickedEvent":
                         _instance?.InterstitialAdClicked?.Invoke(ad);
                         break;
+                    case "OnInterstitialAdRevenuePaidEvent":
+                        _instance?.InterstitialAdRevenuePaid?.Invoke(ad);
+                        break;
 
                     // App Open Events
                     case "OnAppOpenAdLoadedEvent":
@@ -397,6 +451,9 @@ namespace CloudX.IOS
                         break;
                     case "OnAppOpenAdClickedEvent":
                         _instance?.AppOpenAdClicked?.Invoke(ad);
+                        break;
+                    case "OnAppOpenAdRevenuePaidEvent":
+                        _instance?.AppOpenAdRevenuePaid?.Invoke(ad);
                         break;
 
                     // Rewarded Events
@@ -422,6 +479,9 @@ namespace CloudX.IOS
                         var reward = CreateCloudXReward(props);
                         _instance?.RewardedAdRewarded?.Invoke(ad, reward);
                         break;
+                    case "OnRewardedAdRevenuePaidEvent":
+                        _instance?.RewardedAdRevenuePaid?.Invoke(ad);
+                        break;
 
                     case "OnArbiterCompletedEvent":
                         var arbCallId = GetString(props, "callId") ?? "";
@@ -430,34 +490,11 @@ namespace CloudX.IOS
                         break;
 
                     default:
-                        CloudXSdk.Log.LogDebug(() => $"Unhandled iOS event: {eventName}");
+                        // Error so it prints at the default log level: an unhandled name is a defect, never expected traffic.
+                        CloudXSdk.Log.LogError(() => $"Unhandled iOS event: {eventName} (adUnitId={adUnitId})");
                         break;
                 }
             });
-        }
-
-        private static bool TryDispatchRevenueEvent(string eventName, CloudXAd ad)
-        {
-            switch (eventName)
-            {
-                case "OnBannerAdRevenuePaidEvent":
-                    _instance?.BannerAdRevenuePaid?.Invoke(ad);
-                    return true;
-                case "OnMrecAdRevenuePaidEvent":
-                    _instance?.MrecAdRevenuePaid?.Invoke(ad);
-                    return true;
-                case "OnInterstitialAdRevenuePaidEvent":
-                    _instance?.InterstitialAdRevenuePaid?.Invoke(ad);
-                    return true;
-                case "OnAppOpenAdRevenuePaidEvent":
-                    _instance?.AppOpenAdRevenuePaid?.Invoke(ad);
-                    return true;
-                case "OnRewardedAdRevenuePaidEvent":
-                    _instance?.RewardedAdRevenuePaid?.Invoke(ad);
-                    return true;
-                default:
-                    return false;
-            }
         }
 
         #endregion
@@ -469,7 +506,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXGetSdkVersion();
 #else
-            return "0.0.0";
+            throw NotOnIOS(nameof(GetVersion));
 #endif
         }
 
@@ -486,7 +523,7 @@ namespace CloudX.IOS
             CloudXSdk.Log.LogDebug(() => $"Initialize called - appKey: {appKey}, pluginVersion: {pluginVersion}");
             _CLXInitialize(appKey, pluginVersion);
 #else
-            onFailure(CreateDefaultError("iOS not supported in editor"));
+            throw NotOnIOS(nameof(Initialize));
 #endif
         }
 
@@ -495,7 +532,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXIsInitialized();
 #else
-            return false;
+            throw NotOnIOS(nameof(IsInitialized));
 #endif
         }
 
@@ -537,7 +574,7 @@ namespace CloudX.IOS
             CloudXSdk.Log.LogDebug(() => $"ReportRevenueData: {revenueDataJson}");
             return _CLXReportRevenueData(revenueDataJson);
 #else
-            return false;
+            throw NotOnIOS(nameof(ReportRevenueData));
 #endif
         }
 
@@ -791,7 +828,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXIsInterstitialReady(adUnitId);
 #else
-            return false;
+            throw NotOnIOS(nameof(IsInterstitialReady));
 #endif
         }
 
@@ -842,7 +879,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXIsAppOpenReady(adUnitId);
 #else
-            return false;
+            throw NotOnIOS(nameof(IsAppOpenReady));
 #endif
         }
 
@@ -893,7 +930,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXIsRewardedReady(adUnitId);
 #else
-            return false;
+            throw NotOnIOS(nameof(IsRewardedReady));
 #endif
         }
 
@@ -921,8 +958,7 @@ namespace CloudX.IOS
             _arbiterPending[callId] = onCompleted;
             _CLXArbiter(callId, bidsJson);
 #else
-            onCompleted(new CloudXArbiterResult(string.Empty, CloudXArbiterPlatform.None,
-                CloudXArbiterPlatform.None.ToWireString(), null, new Dictionary<string, string>()));
+            throw NotOnIOS(nameof(Arbiter));
 #endif
         }
 
@@ -943,7 +979,7 @@ namespace CloudX.IOS
 #if UNITY_IOS && !UNITY_EDITOR
             return _CLXIsVisualDebuggingEnabled();
 #else
-            return false;
+            throw NotOnIOS(nameof(IsVisualDebuggingEnabled));
 #endif
         }
 
@@ -1018,6 +1054,20 @@ namespace CloudX.IOS
         {
             return new CloudXError("UNKNOWN_ERROR", -1, message);
         }
+
+#if !UNITY_IOS || UNITY_EDITOR
+        /*
+         * Every member here works off iOS - through the delegate CloudXSdk picks for that
+         * platform, never through this one. So the off-iOS branches report the wrong
+         * delegate rather than returning a default that reads as a real answer: a
+         * rejected payload, an empty auction, or version 0.0.0.
+         */
+        private static PlatformNotSupportedException NotOnIOS(string member)
+        {
+            return new PlatformNotSupportedException(
+                $"IOSDelegate.{member} is iOS-only; use the delegate CloudXSdk selected for this platform.");
+        }
+#endif
 
         private static string? GetString(Dictionary<string, object> props, string key)
         {
