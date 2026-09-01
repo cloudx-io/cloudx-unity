@@ -66,6 +66,18 @@ typedef NS_ENUM(NSInteger, AdLoadType) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingInterstitialExtraParameters;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingAppOpenExtraParameters;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingRewardedExtraParameters;
+/*
+ * Serial background queue every Unity callback is forwarded on. The C# side (CallbackDispatcher)
+ * then either marshals to the Unity main thread or runs the publisher handler inline on this
+ * queue thread, so a callback that CloudXSdk.InvokeEventsOnUnityMainThread resolves to "not on
+ * the Unity main thread" is genuinely off it on iOS as well as Android.
+ * maxConcurrentOperationCount = 1 keeps the forwarding order into C#; the order the publisher
+ * observes can still differ when the C# side delivers some events inline on this queue thread
+ * and marshals others to the next Update(). The queue is not suspended while the app is
+ * inactive: main-thread work already waits in UnityMainThreadDispatcher until Unity resumes,
+ * and Android has no such suspension either.
+ */
+@property (nonatomic, strong) NSOperationQueue *backgroundCallbackEventsQueue;
 
 @end
 
@@ -106,6 +118,9 @@ static NSString *const TAG = @"CLXUnityAdManager";
         _pendingInterstitialExtraParameters = [NSMutableDictionary new];
         _pendingAppOpenExtraParameters = [NSMutableDictionary new];
         _pendingRewardedExtraParameters = [NSMutableDictionary new];
+        _backgroundCallbackEventsQueue = [[NSOperationQueue alloc] init];
+        _backgroundCallbackEventsQueue.name = @"io.cloudx.unity.callbacks";
+        _backgroundCallbackEventsQueue.maxConcurrentOperationCount = 1;
     }
     return self;
 }
@@ -776,10 +791,14 @@ static NSString *const TAG = @"CLXUnityAdManager";
                            customData:(NSString * _Nullable)customData {
     clx_unity_dispatch_on_main_thread(^{
         CLXInterstitial *interstitial = self.interstitials[adUnitId];
-        if (interstitial && [interstitial isReady]) {
-            UIViewController *viewController = [self unityViewController];
-            [interstitial showFromViewController:viewController placement:placement customData:customData];
+        if (!interstitial) {
+            [self log:@"showInterstitialForAdUnitId dropped: no interstitial tracked for adUnitId=%@", adUnitId];
+            return;
         }
+        /* No readiness check here: the core reports a not-ready show itself via
+           didFailToDisplayAd: with AD_NOT_READY (400), the same behavior as Android. */
+        UIViewController *viewController = [self unityViewController];
+        [interstitial showFromViewController:viewController placement:placement customData:customData];
     });
 }
 
@@ -862,10 +881,14 @@ static NSString *const TAG = @"CLXUnityAdManager";
                       customData:(NSString * _Nullable)customData {
     clx_unity_dispatch_on_main_thread(^{
         CLXAppOpen *appOpen = self.appOpens[adUnitId];
-        if (appOpen && [appOpen isReady]) {
-            UIViewController *viewController = [self unityViewController];
-            [appOpen showFromViewController:viewController placement:placement customData:customData];
+        if (!appOpen) {
+            [self log:@"showAppOpenForAdUnitId dropped: no app open tracked for adUnitId=%@", adUnitId];
+            return;
         }
+        /* No readiness check here: the core reports a not-ready show itself via
+           didFailToDisplayAd: with AD_NOT_READY (400), the same behavior as Android. */
+        UIViewController *viewController = [self unityViewController];
+        [appOpen showFromViewController:viewController placement:placement customData:customData];
     });
 }
 
@@ -948,10 +971,14 @@ static NSString *const TAG = @"CLXUnityAdManager";
                        customData:(NSString * _Nullable)customData {
     clx_unity_dispatch_on_main_thread(^{
         CLXRewarded *rewarded = self.rewardedAds[adUnitId];
-        if (rewarded && [rewarded isReady]) {
-            UIViewController *viewController = [self unityViewController];
-            [rewarded showFromViewController:viewController placement:placement customData:customData];
+        if (!rewarded) {
+            [self log:@"showRewardedForAdUnitId dropped: no rewarded tracked for adUnitId=%@", adUnitId];
+            return;
         }
+        /* No readiness check here: the core reports a not-ready show itself via
+           didFailToDisplayAd: with AD_NOT_READY (400), the same behavior as Android. */
+        UIViewController *viewController = [self unityViewController];
+        [rewarded showFromViewController:viewController placement:placement customData:customData];
     });
 }
 
@@ -982,31 +1009,21 @@ static NSString *const TAG = @"CLXUnityAdManager";
 
 - (void)didLoadAd:(CLXAd *)ad {
     NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.banners[adUnitId]) {
-        eventName = @"OnBannerAdLoadedEvent";
-    } else if (self.mrecs[adUnitId]) {
-        eventName = @"OnMrecAdLoadedEvent";
-    } else if (self.interstitials[adUnitId]) {
-        eventName = @"OnInterstitialAdLoadedEvent";
-    } else if (self.appOpens[adUnitId]) {
-        eventName = @"OnAppOpenAdLoadedEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        eventName = @"OnRewardedAdLoadedEvent";
-    }
-    
-    if (eventName && adUnitId) {
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdLoadedEvent"
+                                    allowedPrefixes:@[@"Banner", @"Mrec", @"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didLoadAd"];
+    if (eventName) {
         [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
     }
-    
+
     [self.loadingAdTypes removeObjectForKey:adUnitId];
 }
 
 // SDK 2.0.0: didFailToLoadAd now includes the failing ad unit ID directly
 - (void)didFailToLoadAd:(NSString *)adUnitId error:(CLXError *)error {
-    NSString *eventName = @"OnAdLoadFailedEvent";
-    
+    NSString *eventName = nil;
+
     NSNumber *adTypeNumber = self.loadingAdTypes[adUnitId];
     if (adTypeNumber) {
         switch ((AdLoadType)adTypeNumber.integerValue) {
@@ -1027,14 +1044,36 @@ static NSString *const TAG = @"CLXUnityAdManager";
                 break;
         }
     }
-    
-    [self forwardEventWithArgs:@{
-        @"name": eventName,
-        @"adUnitId": adUnitId ?: @"",
-        @"errorCode": @(error.code),
-        @"errorMessage": error.localizedDescription ?: @""
-    }];
-    
+
+    /*
+     * loadingAdTypes only tracks Unity-initiated loads and is cleared on the first result, so
+     * a native-initiated reload (a banner refresh failing after a successful first load) misses
+     * it. The tracked-ad dictionaries still know the ad, so route by them, as the CLXAd-based
+     * callbacks do. This callback has no CLXAd, so there is no format fallback beyond that.
+     */
+    if (!eventName && adUnitId) {
+        for (NSString *prefix in @[@"Banner", @"Mrec", @"Interstitial", @"AppOpen", @"Rewarded"]) {
+            if ([self trackedAdsForPrefix:prefix][adUnitId]) {
+                eventName = [NSString stringWithFormat:@"On%@AdLoadFailedEvent", prefix];
+                [self log:@"didFailToLoadAd: no pending load type for adUnitId=%@, routing by tracked %@ ad", adUnitId, prefix];
+                break;
+            }
+        }
+    }
+
+    if (!eventName) {
+        /* The C# side has no handler for an un-prefixed load failure; forwarding one would only trip its unhandled-event error. */
+        [self log:@"didFailToLoadAd dropped: no pending load type and no tracked ad for adUnitId=%@ (code=%ld %@)",
+                  adUnitId, (long)error.code, error.localizedDescription];
+    } else {
+        [self forwardEventWithArgs:@{
+            @"name": eventName,
+            @"adUnitId": adUnitId ?: @"",
+            @"errorCode": @(error.code),
+            @"errorMessage": error.localizedDescription ?: @""
+        }];
+    }
+
     if (adUnitId) {
         [self.loadingAdTypes removeObjectForKey:adUnitId];
     }
@@ -1043,104 +1082,58 @@ static NSString *const TAG = @"CLXUnityAdManager";
 // CLXFullscreenAdDelegate - only called for interstitial/rewarded ads
 // Note: Banners/MRECs don't have display lifecycle callbacks in iOS SDK 2.0.0
 - (void)didDisplayAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.interstitials[adUnitId]) {
-        eventName = @"OnInterstitialAdDisplayedEvent";
-    } else if (self.appOpens[adUnitId]) {
-        eventName = @"OnAppOpenAdDisplayedEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        eventName = @"OnRewardedAdDisplayedEvent";
-    }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdDisplayedEvent"
+                                    allowedPrefixes:@[@"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didDisplayAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
 }
 
 // CLXFullscreenAdDelegate - only called for interstitial/rewarded ads
 // Note: Banners/MRECs don't have display lifecycle callbacks in iOS SDK 2.0.0
 - (void)didFailToDisplayAd:(CLXAd *)ad error:(CLXError *)error {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.interstitials[adUnitId]) {
-        eventName = @"OnInterstitialAdDisplayFailedEvent";
-    } else if (self.appOpens[adUnitId]) {
-        eventName = @"OnAppOpenAdDisplayFailedEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        eventName = @"OnRewardedAdDisplayFailedEvent";
-    }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId error:error];
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdDisplayFailedEvent"
+                                    allowedPrefixes:@[@"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didFailToDisplayAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId error:error];
     }
 }
 
 // CLXFullscreenAdDelegate - only called for interstitial/rewarded ads
 // Note: Banners/MRECs don't have display lifecycle callbacks in iOS SDK 2.0.0
 - (void)didHideAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.interstitials[adUnitId]) {
-        eventName = @"OnInterstitialAdHiddenEvent";
-    } else if (self.appOpens[adUnitId]) {
-        eventName = @"OnAppOpenAdHiddenEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        eventName = @"OnRewardedAdHiddenEvent";
-    }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdHiddenEvent"
+                                    allowedPrefixes:@[@"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didHideAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
 }
 
 - (void)didClickAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.banners[adUnitId]) {
-        eventName = @"OnBannerAdClickedEvent";
-    } else if (self.mrecs[adUnitId]) {
-        eventName = @"OnMrecAdClickedEvent";
-    } else if (self.interstitials[adUnitId]) {
-        eventName = @"OnInterstitialAdClickedEvent";
-    } else if (self.appOpens[adUnitId]) {
-        eventName = @"OnAppOpenAdClickedEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        eventName = @"OnRewardedAdClickedEvent";
-    }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdClickedEvent"
+                                    allowedPrefixes:@[@"Banner", @"Mrec", @"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didClickAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
 }
 
 // SDK 2.0.0: didRecordImpressionForAd removed - impressions now tracked via didPayRevenueForAd
 // CLXAdRevenueDelegate implementation
 - (void)didPayRevenueForAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    
-    NSString *revenueEventName = nil;
-    
-    if (self.banners[adUnitId]) {
-        revenueEventName = @"OnBannerAdRevenuePaidEvent";
-    } else if (self.mrecs[adUnitId]) {
-        revenueEventName = @"OnMrecAdRevenuePaidEvent";
-    } else if (self.interstitials[adUnitId]) {
-        revenueEventName = @"OnInterstitialAdRevenuePaidEvent";
-    } else if (self.appOpens[adUnitId]) {
-        revenueEventName = @"OnAppOpenAdRevenuePaidEvent";
-    } else if (self.rewardedAds[adUnitId]) {
-        revenueEventName = @"OnRewardedAdRevenuePaidEvent";
-    }
-    
-    if (adUnitId) {
-        if (revenueEventName) {
-            [self forwardAdEventWithName:revenueEventName ad:ad adUnitId:adUnitId];
-        }
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdRevenuePaidEvent"
+                                    allowedPrefixes:@[@"Banner", @"Mrec", @"Interstitial", @"AppOpen", @"Rewarded"]
+                                           callback:@"didPayRevenueForAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
 }
 
@@ -1159,32 +1152,91 @@ static NSString *const TAG = @"CLXUnityAdManager";
 #pragma mark - CLXBannerDelegate
 
 - (void)didExpandAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.banners[adUnitId]) {
-        eventName = @"OnBannerAdExpandedEvent";
-    } else if (self.mrecs[adUnitId]) {
-        eventName = @"OnMrecAdExpandedEvent";
-    }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdExpandedEvent"
+                                    allowedPrefixes:@[@"Banner", @"Mrec"]
+                                           callback:@"didExpandAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
 }
 
 - (void)didCollapseAd:(CLXAd *)ad {
-    NSString *adUnitId = ad.adUnitId;
-    NSString *eventName = nil;
-    
-    if (self.banners[adUnitId]) {
-        eventName = @"OnBannerAdCollapsedEvent";
-    } else if (self.mrecs[adUnitId]) {
-        eventName = @"OnMrecAdCollapsedEvent";
+    NSString *eventName = [self unityEventNameForAd:ad
+                                             suffix:@"AdCollapsedEvent"
+                                    allowedPrefixes:@[@"Banner", @"Mrec"]
+                                           callback:@"didCollapseAd"];
+    if (eventName) {
+        [self forwardAdEventWithName:eventName ad:ad adUnitId:ad.adUnitId];
     }
-    
-    if (eventName && adUnitId) {
-        [self forwardAdEventWithName:eventName ad:ad adUnitId:adUnitId];
+}
+
+#pragma mark - Event Routing
+
+/*
+ * Resolves the Unity event name for a delegate callback as On<prefix><suffix>.
+ * The tracked-ad dictionaries are authoritative: each allowed prefix's dictionary is
+ * probed by the ad unit id in array order, preserving the historical per-callback
+ * routing. When no dictionary tracks the ad, the ad's own format routes it instead so
+ * the event is not lost; that fallback is logged, because a miss means the ad unit
+ * string is not one this manager created. Returns nil, after logging the drop, when
+ * the format is not routable for this callback either.
+ */
+- (nullable NSString *)unityEventNameForAd:(CLXAd *)ad
+                                    suffix:(NSString *)suffix
+                           allowedPrefixes:(NSArray<NSString *> *)allowedPrefixes
+                                  callback:(NSString *)callback {
+    if (!ad) {
+        /* A nil ad would read adFormat as 0 (Banner) and fabricate a banner event. */
+        [self log:@"%@ dropped: callback delivered a nil ad", callback];
+        return nil;
+    }
+
+    NSString *adUnitId = ad.adUnitId;
+    if (adUnitId) {
+        for (NSString *prefix in allowedPrefixes) {
+            if ([self trackedAdsForPrefix:prefix][adUnitId]) {
+                return [NSString stringWithFormat:@"On%@%@", prefix, suffix];
+            }
+        }
+    }
+
+    NSString *formatPrefix = [self eventPrefixFromAdFormat:ad.adFormat];
+    if (formatPrefix && [allowedPrefixes containsObject:formatPrefix]) {
+        [self log:@"%@: no tracked ad for adUnitId=%@, routing by ad format %@ (tracked: banners=%@ mrecs=%@ interstitials=%@ appOpens=%@ rewarded=%@)",
+                  callback, adUnitId, formatPrefix,
+                  self.banners.allKeys, self.mrecs.allKeys, self.interstitials.allKeys,
+                  self.appOpens.allKeys, self.rewardedAds.allKeys];
+        return [NSString stringWithFormat:@"On%@%@", formatPrefix, suffix];
+    }
+
+    [self log:@"%@ dropped: no tracked ad and no routable format for adUnitId=%@ format=%@",
+              callback, adUnitId, [self stringFromAdFormat:ad.adFormat]];
+    return nil;
+}
+
+- (nullable NSDictionary *)trackedAdsForPrefix:(NSString *)prefix {
+    if ([prefix isEqualToString:@"Banner"]) return self.banners;
+    if ([prefix isEqualToString:@"Mrec"]) return self.mrecs;
+    if ([prefix isEqualToString:@"Interstitial"]) return self.interstitials;
+    if ([prefix isEqualToString:@"AppOpen"]) return self.appOpens;
+    if ([prefix isEqualToString:@"Rewarded"]) return self.rewardedAds;
+    return nil;
+}
+
+/*
+ * Routing counterpart of stringFromAdFormat:. Kept separate because that method's
+ * default case reports @"Interstitial", which must never route an unknown or
+ * non-routable format (such as Native) into interstitial events.
+ */
+- (nullable NSString *)eventPrefixFromAdFormat:(CLXAdFormat)adFormat {
+    switch (adFormat) {
+        case CLXAdFormatBanner: return @"Banner";
+        case CLXAdFormatMREC: return @"Mrec";
+        case CLXAdFormatInterstitial: return @"Interstitial";
+        case CLXAdFormatAppOpen: return @"AppOpen";
+        case CLXAdFormatRewarded: return @"Rewarded";
+        default: return nil;
     }
 }
 
@@ -1265,12 +1317,18 @@ static NSString *const TAG = @"CLXUnityAdManager";
 }
 
 - (void)forwardEventWithArgs:(NSDictionary *)args {
-    if (!_backgroundCallback) {
+    // Capture into a local so the block uses the callback that passed this check, not a later read of the static.
+    CLXUnityBackgroundCallback callback = _backgroundCallback;
+    if (!callback) {
         return;
     }
-    
-    NSString *json = [CLXUnityAdManager serializeParameters:args];
-    _backgroundCallback(json.UTF8String);
+
+    // Snapshot so a caller mutating its NSMutableDictionary after this call cannot race the queue thread.
+    NSDictionary *snapshot = [args copy];
+    [self.backgroundCallbackEventsQueue addOperationWithBlock:^{
+        NSString *json = [CLXUnityAdManager serializeParameters:snapshot];
+        callback(json.UTF8String);
+    }];
 }
 
 #pragma mark - Arbiter

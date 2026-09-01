@@ -18,6 +18,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Concurrent;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CloudX.Internal.Threading {
@@ -94,6 +95,12 @@ namespace CloudX.Internal.Threading {
 
 		private static UnityMainThreadDispatcher _instance = null;
 
+		/// <summary>
+		/// Managed thread id of the Unity main thread, captured when the dispatcher is created
+		/// (Awake runs on the main thread). Null until then.
+		/// </summary>
+		public static int? MainThreadId { get; private set; }
+
 		public static bool Exists() {
 			return _instance != null;
 		}
@@ -107,14 +114,51 @@ namespace CloudX.Internal.Threading {
 
 
 		void Awake() {
-			if (_instance == null) {
-				_instance = this;
+			if (RegisterInstance()) {
 				DontDestroyOnLoad(this.gameObject);
 			}
 		}
 
-		void OnDestroy() {
+		/*
+		 * Records the main thread id and claims the singleton slot. Split out of Awake so Edit Mode
+		 * tests (where Awake is not invoked on AddComponent and DontDestroyOnLoad is illegal) can
+		 * register an instance. Returns true when this component became the instance.
+		 */
+		internal bool RegisterInstance() {
+			if (_instance != null) {
+				return false;
+			}
+			_instance = this;
+			MainThreadId = Thread.CurrentThread.ManagedThreadId;
+			// A newly registered dispatcher re-arms CallbackDispatcher's missing-dispatcher error.
+			CallbackDispatcher.ResetMissingDispatcherWarning();
+			return true;
+		}
+
+		/// <summary>
+		/// Enqueues the action if a dispatcher instance exists, reading the instance once so a
+		/// concurrent OnDestroy cannot make this throw. Returns false when there is no instance.
+		/// </summary>
+		public static bool TryEnqueue(Action action) {
+			var instance = _instance;
+			if (instance == null) {
+				return false;
+			}
+			instance.Enqueue(action);
+			return true;
+		}
+
+		internal void OnDestroy() {
+			// Only the registered instance may clear the slot; a stray second component must not.
+			if (_instance == this) {
 				_instance = null;
+				/*
+				 * Drop anything still queued: the queue is static, so with domain reload disabled
+				 * it would survive into the next play session and run stale closures there.
+				 */
+				while (_executionQueue.TryDequeue(out _)) {
+				}
+			}
 		}
 
 

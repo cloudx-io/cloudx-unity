@@ -16,7 +16,7 @@ namespace CloudX
         }
 
         // Called when user is rewarded (Android thread)
-        public void onUserRewarded(AndroidJavaObject cloudXAdObject, AndroidJavaObject cloudXRewardObject)
+        public void onUserRewarded(AndroidJavaObject cloudXAdObject, AndroidJavaObject cloudXRewardObject) => JniCallbackGuard.Run(OnUserRewardedName, () =>
         {
             // Convert on Android thread to minimize main thread work
             var cloudXAd = cloudXAdObject.ToCloudXAd();
@@ -24,10 +24,10 @@ namespace CloudX
 
             CloudXSdk.Log.LogDebug(() => $"onUserRewarded callback received: {cloudXAd}, reward={cloudXReward}");
 
-            // Dispatch to Unity main thread
-            UnityMainThreadDispatcher.Instance().Enqueue(() => {
-                AdRewarded?.Invoke(cloudXAd, cloudXReward);
-            });
-        }
+            CallbackDispatcher.Dispatch(OnUserRewardedName, keepInBackground: false,
+                () => AdRewarded?.Invoke(cloudXAd, cloudXReward));
+        });
+
+        private const string OnUserRewardedName = "CloudXRewardedListener.onUserRewarded";
     }
 }

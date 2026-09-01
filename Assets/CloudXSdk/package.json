@@ -1,7 +1,7 @@
 {
   "name": "io.cloudx.sdk.unity",
   "displayName": "CloudX SDK",
-  "version": "4.5.1",
+  "version": "4.6.1",
   "unity": "2022.3",
   "description": "CloudX SDK for Unity",
   "author": {

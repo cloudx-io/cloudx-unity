@@ -2,6 +2,7 @@
 
 using System;
 using UnityEngine;
+using CloudX.Internal.Threading;
 
 namespace CloudX
 {
@@ -13,11 +14,13 @@ namespace CloudX
     {
         /// <summary>
         /// Fired when the SDK has been successfully initialized.
+        /// Runs on the Unity main thread unless <see cref="CloudXSdk.InvokeEventsOnUnityMainThread"/> is false.
         /// </summary>
         public static event Action<CloudXSdkConfiguration>? OnSdkInitializedEvent;
 
         /// <summary>
         /// Fired when SDK initialization has failed.
+        /// Runs on the Unity main thread unless <see cref="CloudXSdk.InvokeEventsOnUnityMainThread"/> is false.
         /// </summary>
         public static event Action<CloudXError>? OnSdkInitializationFailedEvent;
 
@@ -26,7 +29,7 @@ namespace CloudX
         /// </summary>
         internal static void OnSdkInitializedInternal(CloudXSdkConfiguration configuration)
         {
-            OnSdkInitializedEvent?.Invoke(configuration);
+            CallbackInvoker.Invoke(OnSdkInitializedEvent, configuration, "OnSdkInitializedEvent");
         }
 
         /// <summary>
@@ -34,7 +37,7 @@ namespace CloudX
         /// </summary>
         internal static void OnSdkInitializationFailedInternal(CloudXError error)
         {
-            OnSdkInitializationFailedEvent?.Invoke(error);
+            CallbackInvoker.Invoke(OnSdkInitializationFailedEvent, error, "OnSdkInitializationFailedEvent");
         }
 
         /// <summary>
