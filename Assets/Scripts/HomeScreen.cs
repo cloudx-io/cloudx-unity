@@ -180,7 +180,7 @@ public class HomeScreen : MonoBehaviour
          * Banner and MREC revenue runs on the main thread like everything else.
          *
          * true: every callback, revenue included, runs on the Unity main thread. Fullscreen
-         * revenue then reaches you after the ad closes rather than at impression time.
+         * revenue may then reach you after the ad closes rather than at impression time.
          *
          * false: every callback runs on a background thread. Fastest delivery, but your
          * handlers must not touch Unity APIs and must marshal to the main thread themselves.
