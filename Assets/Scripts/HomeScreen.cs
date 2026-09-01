@@ -176,7 +176,7 @@ public class HomeScreen : MonoBehaviour
          * Left unset (default): every callback runs on the Unity main thread, except
          * OnAdRevenuePaid for interstitial, app open and rewarded ads. Those arrive on a
          * background thread, because the game is paused or covered while a fullscreen ad
-         * is showing and a main-thread callback would only run after the ad closes.
+         * is showing and a main-thread callback may only run after the ad closes.
          * Banner and MREC revenue runs on the main thread like everything else.
          *
          * true: every callback, revenue included, runs on the Unity main thread. Fullscreen
