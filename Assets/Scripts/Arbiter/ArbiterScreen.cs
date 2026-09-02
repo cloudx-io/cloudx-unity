@@ -6,36 +6,37 @@ using GoogleMobileAds.Common;
 using UnityEngine;
 
 /*
- * First Look demo entry point and integration template: CloudX gets the first
- * chance to fill each placement and AdMob is the lazy fallback. The flow lives
- * entirely in this folder (screen + a shared controller base + one controller
- * per format) so it can be copied into a publisher app as-is; AdScreenUi is
- * demo-only layout and is kept out on purpose. Covers all four formats -
- * interstitial, rewarded, banner and MREC. Banner and MREC keep CloudX
- * auto-refresh off (it is opt-out) so a background reload never overrides the
- * First Look source decision; GeneralScreen restarts refresh on focus, this
- * screen deliberately does not.
+ * Arbiter/TPA demo entry point and integration template: CloudX and AdMob load
+ * in parallel for every placement and Trusted Arbiter (CloudXSdk.Arbiter) picks
+ * which one is shown. Interstitial and rewarded prepare the winner ahead of the
+ * placement; banner and MREC arbitrate and then render on a refresh cycle with
+ * auto-refresh off. The flow lives entirely in this folder (screen + a shared
+ * controller base + one controller per format) so it can be copied into a
+ * publisher app as-is; AdScreenUi is demo-only layout and is kept out on purpose.
+ *
+ * The status lines make the arbitration visible: which sides loaded, what the
+ * arbiter returned and over how many bids, and which platform is showing.
  */
 [RequireComponent(typeof(AdScreenUi))]
-public class FirstLookScreen : MonoBehaviour
+public class ArbiterScreen : MonoBehaviour
 {
     private const string TAG = "CloudXUnityDemo";
     private const float InitializationUiTimeoutSeconds = 15f;
 
     /*
-     * Retry policy after a load or show failure: 2s, 4s, 8s ... capped, and
-     * reset once a load succeeds. A fixed short delay turns sustained no-fill
-     * into a tight request loop against the fallback network, which ad
-     * networks penalise.
+     * Retry policy after a load or show failure while no winner is prepared or
+     * shown: 2s, 4s, 8s ... capped, and reset once a load succeeds. Once a
+     * winner exists, the controllers re-request the missing network themselves
+     * on the next cycle, so a sustained no-fill never turns into a tight loop.
      */
     private const float RetryBaseDelaySeconds = 2f;
     private const float RetryMaxDelaySeconds = 60f;
 
     private AdScreenUi _ui;
-    private FirstLookInterstitialController _interstitial;
-    private FirstLookRewardedController _rewarded;
-    private FirstLookBannerController _banner;
-    private FirstLookMrecController _mrec;
+    private ArbiterInterstitialController _interstitial;
+    private ArbiterRewardedController _rewarded;
+    private ArbiterBannerController _banner;
+    private ArbiterMrecController _mrec;
     private bool _cloudXInitAnswered;
     private int _interstitialRetries;
     private int _rewardedRetries;
@@ -44,7 +45,7 @@ public class FirstLookScreen : MonoBehaviour
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
 
-    private static void Log(string message) => Debug.Log($"[{TAG}][FirstLook] {message}");
+    private static void Log(string message) => Debug.Log($"[{TAG}][Arbiter] {message}");
 
     void Awake()
     {
@@ -87,6 +88,13 @@ public class FirstLookScreen : MonoBehaviour
         StartCoroutine(ReleaseActionsIfInitStalls());
     }
 
+    /* The inline controllers' refresh clock. */
+    void Update()
+    {
+        _banner?.Tick(Time.unscaledDeltaTime);
+        _mrec?.Tick(Time.unscaledDeltaTime);
+    }
+
     void OnDestroy()
     {
         CloudXInitializationCallbacks.OnSdkInitializedEvent -= OnCloudXInitialized;
@@ -109,12 +117,10 @@ public class FirstLookScreen : MonoBehaviour
     private void InitializeAdMob()
     {
         /*
-         * No need to wait for this before loading: the fallback is lazy, and
-         * Google Mobile Ads queues loads issued before init completes.
-         *
-         * Google Mobile Ads raises its callbacks off the Unity main thread;
-         * anything that touches UI goes through ExecuteInUpdate. The controllers
-         * do the same for every ad event they forward.
+         * Google Mobile Ads queues loads issued before init completes, so the
+         * parallel loads can start as soon as CloudX is ready. Its callbacks
+         * arrive off the Unity main thread; anything that touches UI goes
+         * through ExecuteInUpdate, and the controllers do the same.
          */
         MobileAds.Initialize(_ => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
@@ -144,11 +150,16 @@ public class FirstLookScreen : MonoBehaviour
         CloudXSdk.Initialize(CloudXInitializationConfiguration.Create(DemoConfig.AppKey).Build());
     }
 
+    /*
+     * The arbiter is called only after initialization completed (docs). The
+     * controllers are created here, so their first Arbiter call cannot precede
+     * OnSdkInitialized.
+     */
     private void OnCloudXInitialized(CloudXSdkConfiguration _)
     {
         _cloudXInitAnswered = true;
 
-        if (_interstitial != null || _rewarded != null)
+        if (_interstitial != null)
         {
             /*
              * The watchdog already gave up on CloudX and built AdMob-only
@@ -175,15 +186,15 @@ public class FirstLookScreen : MonoBehaviour
         PublishInitializationStatus();
 
         /*
-         * First Look keeps working without CloudX: the controllers skip the
-         * CloudX leg and serve the AdMob fallback directly.
+         * The demo keeps working without CloudX: the controllers skip the CloudX
+         * leg, AdMob is the only candidate and wins every round locally.
          */
         CreateControllers(cloudXAvailable: false);
     }
 
     /*
      * Releases the UI if CloudX Initialize never reports back. Ads may still
-     * load through the AdMob fallback path in that case.
+     * load through AdMob alone in that case.
      */
     private IEnumerator ReleaseActionsIfInitStalls()
     {
@@ -194,7 +205,7 @@ public class FirstLookScreen : MonoBehaviour
             yield break;
         }
 
-        Log($"No CloudX initialization result within {InitializationUiTimeoutSeconds}s, continuing with the fallback only");
+        Log($"No CloudX initialization result within {InitializationUiTimeoutSeconds}s, continuing with AdMob only");
         _cloudXStatus = "CloudX: No response";
         PublishInitializationStatus();
         CreateControllers(cloudXAvailable: false);
@@ -202,119 +213,148 @@ public class FirstLookScreen : MonoBehaviour
 
     private void CreateControllers(bool cloudXAvailable)
     {
-        if (_interstitial != null || _rewarded != null)
+        if (_interstitial != null)
         {
             return;
         }
 
-        _interstitial = new FirstLookInterstitialController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
+        _interstitial = new ArbiterInterstitialController(
+            ArbiterConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
             DemoConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
-        _interstitial.AdLoaded += source =>
+        _interstitial.AdLoaded += platform =>
         {
             _interstitialRetries = 0;
-            SetInterstitialStatus($"Loaded ({source})");
+            SetInterstitialStatus($"{platform} loaded");
         };
-        _interstitial.AdLoadFailed += (source, message) =>
+        _interstitial.AdLoadFailed += (platform, message) =>
         {
+            /* With a candidate, a load or a round pending, the controller gets there itself. */
+            if (!_interstitial.NeedsRetry)
+            {
+                SetInterstitialStatus($"Load failed ({platform}): {message}");
+                return;
+            }
+
             var delay = NextRetryDelay(ref _interstitialRetries);
-            SetInterstitialStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
+            SetInterstitialStatus($"Load failed ({platform}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
-        _interstitial.AdShown += source => SetInterstitialStatus($"Showing ({source})");
-        _interstitial.AdShowFailed += (source, message) =>
+        _interstitial.ArbiterCompleted += (result, bidCount) =>
+            SetInterstitialStatus(ArbiterSummary(result, bidCount));
+        _interstitial.AdShown += platform => SetInterstitialStatus($"Showing ({platform})");
+        _interstitial.AdShowFailed += (platform, message) =>
         {
             var delay = NextRetryDelay(ref _interstitialRetries);
-            SetInterstitialStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
+            SetInterstitialStatus($"Show failed ({platform}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
-        _interstitial.AdClosed += source =>
+        _interstitial.AdClosed += platform =>
         {
-            SetInterstitialStatus($"Closed ({source})");
-            /* Prepare the next placement opportunity right away. */
+            SetInterstitialStatus($"Closed ({platform})");
+            /* Start the next cycle right away: reload what is missing, re-arbitrate. */
             LoadInterstitial();
         };
-        _interstitial.AdClicked += source => Log($"Interstitial clicked ({source})");
+        _interstitial.AdClicked += platform => Log($"Interstitial clicked ({platform})");
 
-        _rewarded = new FirstLookRewardedController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.RewardedAdUnitId),
+        _rewarded = new ArbiterRewardedController(
+            ArbiterConfig.CloudXAdUnitOrInvalid(DemoConfig.RewardedAdUnitId),
             DemoConfig.AdMobRewardedAdUnitId,
             cloudXAvailable);
-        _rewarded.AdLoaded += source =>
+        _rewarded.AdLoaded += platform =>
         {
             _rewardedRetries = 0;
-            SetRewardedStatus($"Loaded ({source})");
+            SetRewardedStatus($"{platform} loaded");
         };
-        _rewarded.AdLoadFailed += (source, message) =>
+        _rewarded.AdLoadFailed += (platform, message) =>
         {
+            if (!_rewarded.NeedsRetry)
+            {
+                SetRewardedStatus($"Load failed ({platform}): {message}");
+                return;
+            }
+
             var delay = NextRetryDelay(ref _rewardedRetries);
-            SetRewardedStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
+            SetRewardedStatus($"Load failed ({platform}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadRewarded), delay);
         };
-        _rewarded.AdShown += source => SetRewardedStatus($"Showing ({source})");
-        _rewarded.AdShowFailed += (source, message) =>
+        _rewarded.ArbiterCompleted += (result, bidCount) =>
+            SetRewardedStatus(ArbiterSummary(result, bidCount));
+        _rewarded.AdShown += platform => SetRewardedStatus($"Showing ({platform})");
+        _rewarded.AdShowFailed += (platform, message) =>
         {
             var delay = NextRetryDelay(ref _rewardedRetries);
-            SetRewardedStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
+            SetRewardedStatus($"Show failed ({platform}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadRewarded), delay);
         };
-        _rewarded.AdClosed += source =>
+        _rewarded.AdClosed += platform =>
         {
-            SetRewardedStatus($"Closed ({source})");
+            SetRewardedStatus($"Closed ({platform})");
             LoadRewarded();
         };
-        _rewarded.AdClicked += source => Log($"Rewarded clicked ({source})");
-        _rewarded.RewardEarned += (source, reward) =>
+        _rewarded.AdClicked += platform => Log($"Rewarded clicked ({platform})");
+        _rewarded.RewardEarned += (platform, reward) =>
         {
-            Log($"Reward earned ({source}): {reward}");
-            SetRewardedStatus($"Reward: {reward} ({source})");
+            Log($"Reward earned ({platform}): {reward}");
+            SetRewardedStatus($"Reward: {reward} ({platform})");
         };
 
-        _banner = new FirstLookBannerController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
+        _banner = new ArbiterBannerController(
+            ArbiterConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
             DemoConfig.AdMobBannerAdUnitId,
-            cloudXAvailable);
-        _banner.AdLoaded += source =>
+            cloudXAvailable,
+            ArbiterConfig.InlineRefreshIntervalSeconds);
+        _banner.AdLoaded += platform =>
         {
             _bannerRetries = 0;
-            Log($"Banner loaded ({source})");
-            if (!_banner.IsShown)
-            {
-                _ui.SetBannerButtonLabel("Show Banner");
-            }
+            Log($"Banner: {platform} loaded");
         };
-        _banner.AdLoadFailed += (source, message) =>
+        _banner.AdLoadFailed += (platform, message) =>
         {
+            /* With a candidate, a load, a round or a view pending, the cycle re-requests fills itself. */
+            if (!_banner.NeedsRetry)
+            {
+                Log($"Banner: load failed ({platform}): {message}");
+                return;
+            }
+
             var delay = NextRetryDelay(ref _bannerRetries);
-            Log($"Banner load failed ({source}): {message}; retrying in {delay:0}s");
+            Log($"Banner: load failed ({platform}): {message}; retrying in {delay:0}s");
             Invoke(nameof(LoadBanner), delay);
         };
-        _banner.AdShown += source => _ui.SetBannerButtonLabel($"Hide Banner ({source})");
-        _banner.AdClicked += source => Log($"Banner clicked ({source})");
+        _banner.ArbiterCompleted += (result, bidCount) => Log($"Banner: {ArbiterSummary(result, bidCount)}");
+        _banner.WinnerShown += platform => _ui.SetBannerButtonLabel(
+            platform == CloudXArbiterPlatform.None ? "Banner: no winner" : $"Hide Banner ({platform})");
+        _banner.AdClicked += platform => Log($"Banner clicked ({platform})");
 
-        _mrec = new FirstLookMrecController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.MrecAdUnitId),
+        _mrec = new ArbiterMrecController(
+            ArbiterConfig.CloudXAdUnitOrInvalid(DemoConfig.MrecAdUnitId),
             DemoConfig.AdMobMrecAdUnitId,
-            cloudXAvailable);
-        _mrec.AdLoaded += source =>
+            cloudXAvailable,
+            ArbiterConfig.InlineRefreshIntervalSeconds);
+        _mrec.AdLoaded += platform =>
         {
             _mrecRetries = 0;
-            Log($"MREC loaded ({source})");
-            if (!_mrec.IsShown)
-            {
-                _ui.SetMrecButtonLabel("Show MREC");
-            }
+            Log($"MREC: {platform} loaded");
         };
-        _mrec.AdLoadFailed += (source, message) =>
+        _mrec.AdLoadFailed += (platform, message) =>
         {
+            if (!_mrec.NeedsRetry)
+            {
+                Log($"MREC: load failed ({platform}): {message}");
+                return;
+            }
+
             var delay = NextRetryDelay(ref _mrecRetries);
-            Log($"MREC load failed ({source}): {message}; retrying in {delay:0}s");
+            Log($"MREC: load failed ({platform}): {message}; retrying in {delay:0}s");
             Invoke(nameof(LoadMrec), delay);
         };
-        _mrec.AdShown += source => _ui.SetMrecButtonLabel($"Hide MREC ({source})");
-        _mrec.AdClicked += source => Log($"MREC clicked ({source})");
+        _mrec.ArbiterCompleted += (result, bidCount) => Log($"MREC: {ArbiterSummary(result, bidCount)}");
+        _mrec.WinnerShown += platform => _ui.SetMrecButtonLabel(
+            platform == CloudXArbiterPlatform.None ? "MREC: no winner" : $"Hide MREC ({platform})");
+        _mrec.AdClicked += platform => Log($"MREC clicked ({platform})");
 
+        /* Parallel loads for every format; each arbitrates once its candidates settle. */
         LoadInterstitial();
         LoadRewarded();
         LoadBanner();
@@ -328,33 +368,33 @@ public class FirstLookScreen : MonoBehaviour
 
     private void ShowInterstitial()
     {
-        var source = _interstitial.ReadySource;
+        var winner = _interstitial.PreparedWinner;
 
         if (_interstitial.Show())
         {
-            Log($"Showing the interstitial ({source})");
+            Log($"Showing the interstitial ({winner})");
             return;
         }
 
         /*
-         * Neither source has an ad; in a real app the game flow would simply
-         * continue here. The demo reloads and says so.
+         * No winner is prepared (or its ad is gone); in a real app the game flow
+         * would simply continue here. The demo reloads and says so.
          */
-        SetInterstitialStatus("No ad ready; reloading");
+        SetInterstitialStatus("No winner prepared; reloading");
         LoadInterstitial();
     }
 
     private void ShowRewarded()
     {
-        var source = _rewarded.ReadySource;
+        var winner = _rewarded.PreparedWinner;
 
         if (_rewarded.Show())
         {
-            Log($"Showing the rewarded ad ({source})");
+            Log($"Showing the rewarded ad ({winner})");
             return;
         }
 
-        SetRewardedStatus("No ad ready; reloading");
+        SetRewardedStatus("No winner prepared; reloading");
         LoadRewarded();
     }
 
@@ -367,12 +407,9 @@ public class FirstLookScreen : MonoBehaviour
             return;
         }
 
-        /* AdShown updates the label once a source actually shows. */
-        if (!_banner.Show())
-        {
-            _ui.SetBannerButtonLabel("Banner: loading...");
-            LoadBanner();
-        }
+        /* WinnerShown updates the label once the round has rendered. */
+        _ui.SetBannerButtonLabel("Banner: arbitrating...");
+        _banner.Show();
     }
 
     private void ToggleMrec()
@@ -384,11 +421,8 @@ public class FirstLookScreen : MonoBehaviour
             return;
         }
 
-        if (!_mrec.Show())
-        {
-            _ui.SetMrecButtonLabel("MREC: loading...");
-            LoadMrec();
-        }
+        _ui.SetMrecButtonLabel("MREC: arbitrating...");
+        _mrec.Show();
     }
 
     private static float NextRetryDelay(ref int retries)
@@ -396,6 +430,14 @@ public class FirstLookScreen : MonoBehaviour
         var delay = Mathf.Min(RetryBaseDelaySeconds * Mathf.Pow(2f, retries), RetryMaxDelaySeconds);
         retries++;
         return delay;
+    }
+
+    private static string ArbiterSummary(CloudXArbiterResult result, int bidCount)
+    {
+        var bids = bidCount == 1 ? "1 bid" : $"{bidCount} bids";
+        return result.Platform == CloudXArbiterPlatform.None
+            ? $"Arbiter: no winner ({bids})"
+            : $"Arbiter: {result.Platform} ({bids})";
     }
 
     /*
