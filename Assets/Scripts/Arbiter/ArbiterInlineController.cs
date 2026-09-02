@@ -171,10 +171,14 @@ public abstract class ArbiterInlineController : ArbiterAdController
         _wantShown = false;
         _refreshTimer = 0f;
         InvalidateInFlightArbiter();
-        /* A consumed fill must not be re-shown later; hides the views either way. */
-        ReloadConsumedWinner();
+
+        /* A consumed fill must not be re-shown later; the reload path hides the views itself. */
+        if (!ReloadConsumedWinner())
+        {
+            HideBothViews();
+        }
+
         _shownPlatform = null;
-        HideBothViews();
     }
 
     /* Advances the refresh clock; called every frame by the owner. */
@@ -206,13 +210,14 @@ public abstract class ArbiterInlineController : ArbiterAdController
      * the reload cannot render a creative no round has selected. Runs when the
      * interval elapses (or the ad is hidden), never right after the impression
      * - see the class note. Nothing is on screen afterwards, so the next round
-     * is due as soon as the loads settle.
+     * is due as soon as the loads settle. Returns whether there was a consumed
+     * winner to take down.
      */
-    private void ReloadConsumedWinner()
+    private bool ReloadConsumedWinner()
     {
         if (!_winnerConsumed)
         {
-            return;
+            return false;
         }
 
         _winnerConsumed = false;
@@ -229,6 +234,7 @@ public abstract class ArbiterInlineController : ArbiterAdController
         _shownPlatform = null;
         HideBothViews();
         Load();
+        return true;
     }
 
     /*
