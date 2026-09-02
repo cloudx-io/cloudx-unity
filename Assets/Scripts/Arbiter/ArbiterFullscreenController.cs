@@ -25,6 +25,8 @@ public abstract class ArbiterFullscreenController : ArbiterAdController
     private bool _cloudXSettled;
     private bool _adMobSettled;
     private CloudXArbiterResult _nextWinner;
+    /* A show call was made and neither close nor show-failure has arrived yet. */
+    private bool _isShowing;
 
     protected ArbiterFullscreenController(
         string cloudXAdUnitId,
@@ -42,24 +44,30 @@ public abstract class ArbiterFullscreenController : ArbiterAdController
             ? null
             : _nextWinner.Platform;
 
+    /* True between a show call and its close or show-failure callback. */
+    public bool IsShowing => _isShowing;
+
     /*
-     * True when nothing is loaded, loading or decided, so only a fresh Load()
-     * can move things forward. The screen's backoff retry keys off this: while a
-     * candidate, a load or a round is pending, the controller gets there itself.
+     * True when nothing is loaded, loading, decided or showing, so only a fresh
+     * Load() can move things forward. The screen's backoff retry keys off this:
+     * while a candidate, a load, a round or a show is pending, the controller
+     * gets there itself.
      */
     public bool NeedsRetry =>
-        !IsDisposed && !ArbiterInFlight && PreparedWinner == null
+        !IsDisposed && !ArbiterInFlight && !_isShowing && PreparedWinner == null
         && !IsLoadingCloudX && !IsLoadingAdMob && !CloudXHasBid && !AdMobCanShow();
 
     private bool CloudXHasBid => LoadedCloudXAd != null && CloudXIsReady();
 
     /*
      * Loads whichever network does not hold a fill. After one side failed, a
-     * retry reloads only that side and re-arbitrates when it settles.
+     * retry reloads only that side and re-arbitrates when it settles. While an
+     * ad is showing nothing is loaded: the shown AdMob object must not be
+     * destroyed under the user, and the close callback restarts the cycle.
      */
     public override void Load()
     {
-        if (IsDisposed || ArbiterInFlight)
+        if (IsDisposed || ArbiterInFlight || _isShowing)
         {
             return;
         }
@@ -93,11 +101,13 @@ public abstract class ArbiterFullscreenController : ArbiterAdController
 
     /*
      * Shows the stored winner. A stale winner (its ad expired or was consumed)
-     * is dropped and false is returned; the caller reloads.
+     * is dropped and false is returned; the caller reloads. While a show is in
+     * progress a second call is ignored and returns false; check IsShowing to
+     * tell the two apart.
      */
     public bool Show()
     {
-        if (IsDisposed || _nextWinner == null)
+        if (IsDisposed || _isShowing || _nextWinner == null)
         {
             return false;
         }
@@ -108,12 +118,14 @@ public abstract class ArbiterFullscreenController : ArbiterAdController
         switch (winner)
         {
             case CloudXArbiterPlatform.CloudX when CloudXHasBid:
+                _isShowing = true;
                 CloudXShow();
                 return true;
             case CloudXArbiterPlatform.CloudX:
                 LoadedCloudXAd = null;
                 return false;
             case CloudXArbiterPlatform.AdMob when AdMobCanShow():
+                _isShowing = true;
                 AdMobShow();
                 return true;
             case CloudXArbiterPlatform.AdMob:
@@ -157,8 +169,19 @@ public abstract class ArbiterFullscreenController : ArbiterAdController
     }
 
     protected void RaiseAdShown(CloudXArbiterPlatform platform) => AdShown?.Invoke(platform);
-    protected void RaiseAdShowFailed(CloudXArbiterPlatform platform, string message) => AdShowFailed?.Invoke(platform, message);
-    protected void RaiseAdClosed(CloudXArbiterPlatform platform) => AdClosed?.Invoke(platform);
+
+    /* Show-failure and close end the show; the flag clears before subscribers run so they may Load(). */
+    protected void RaiseAdShowFailed(CloudXArbiterPlatform platform, string message)
+    {
+        _isShowing = false;
+        AdShowFailed?.Invoke(platform, message);
+    }
+
+    protected void RaiseAdClosed(CloudXArbiterPlatform platform)
+    {
+        _isShowing = false;
+        AdClosed?.Invoke(platform);
+    }
 
     /*
      * CloudX callback handlers, shared by both fullscreen formats. The concrete

@@ -42,6 +42,8 @@ public class ArbiterScreen : MonoBehaviour
     private int _rewardedRetries;
     private int _bannerRetries;
     private int _mrecRetries;
+    private int _bannerBidCount;
+    private int _mrecBidCount;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
 
@@ -322,9 +324,13 @@ public class ArbiterScreen : MonoBehaviour
             Log($"Banner: load failed ({platform}): {message}; retrying in {delay:0}s");
             Invoke(nameof(LoadBanner), delay);
         };
-        _banner.ArbiterCompleted += (result, bidCount) => Log($"Banner: {ArbiterSummary(result, bidCount)}");
-        _banner.WinnerShown += platform => _ui.SetBannerButtonLabel(
-            platform == CloudXArbiterPlatform.None ? "Banner: no winner" : $"Hide Banner ({platform})");
+        _banner.ArbiterCompleted += (result, bidCount) =>
+        {
+            _bannerBidCount = bidCount;
+            Log($"Banner: {ArbiterSummary(result, bidCount)}");
+        };
+        /* The button is the banner's status line: platform on screen and the bids it beat. */
+        _banner.WinnerShown += platform => _ui.SetBannerButtonLabel(InlineLabel("Banner", platform, _bannerBidCount));
         _banner.AdClicked += platform => Log($"Banner clicked ({platform})");
 
         _mrec = new ArbiterMrecController(
@@ -349,9 +355,12 @@ public class ArbiterScreen : MonoBehaviour
             Log($"MREC: load failed ({platform}): {message}; retrying in {delay:0}s");
             Invoke(nameof(LoadMrec), delay);
         };
-        _mrec.ArbiterCompleted += (result, bidCount) => Log($"MREC: {ArbiterSummary(result, bidCount)}");
-        _mrec.WinnerShown += platform => _ui.SetMrecButtonLabel(
-            platform == CloudXArbiterPlatform.None ? "MREC: no winner" : $"Hide MREC ({platform})");
+        _mrec.ArbiterCompleted += (result, bidCount) =>
+        {
+            _mrecBidCount = bidCount;
+            Log($"MREC: {ArbiterSummary(result, bidCount)}");
+        };
+        _mrec.WinnerShown += platform => _ui.SetMrecButtonLabel(InlineLabel("MREC", platform, _mrecBidCount));
         _mrec.AdClicked += platform => Log($"MREC clicked ({platform})");
 
         /* Parallel loads for every format; each arbitrates once its candidates settle. */
@@ -376,6 +385,12 @@ public class ArbiterScreen : MonoBehaviour
             return;
         }
 
+        if (_interstitial.IsShowing)
+        {
+            /* A second tap while the ad is opening; nothing to reload. */
+            return;
+        }
+
         /*
          * No winner is prepared (or its ad is gone); in a real app the game flow
          * would simply continue here. The demo reloads and says so.
@@ -391,6 +406,11 @@ public class ArbiterScreen : MonoBehaviour
         if (_rewarded.Show())
         {
             Log($"Showing the rewarded ad ({winner})");
+            return;
+        }
+
+        if (_rewarded.IsShowing)
+        {
             return;
         }
 
@@ -432,13 +452,17 @@ public class ArbiterScreen : MonoBehaviour
         return delay;
     }
 
-    private static string ArbiterSummary(CloudXArbiterResult result, int bidCount)
-    {
-        var bids = bidCount == 1 ? "1 bid" : $"{bidCount} bids";
-        return result.Platform == CloudXArbiterPlatform.None
-            ? $"Arbiter: no winner ({bids})"
-            : $"Arbiter: {result.Platform} ({bids})";
-    }
+    private static string Bids(int bidCount) => bidCount == 1 ? "1 bid" : $"{bidCount} bids";
+
+    private static string ArbiterSummary(CloudXArbiterResult result, int bidCount) =>
+        result.Platform == CloudXArbiterPlatform.None
+            ? $"Arbiter: no winner ({Bids(bidCount)})"
+            : $"Arbiter: {result.Platform} ({Bids(bidCount)})";
+
+    private static string InlineLabel(string format, CloudXArbiterPlatform platform, int bidCount) =>
+        platform == CloudXArbiterPlatform.None
+            ? $"{format}: no winner ({Bids(bidCount)})"
+            : $"Hide {format} ({platform}, {Bids(bidCount)})";
 
     /*
      * Named methods so terminal failures can retry via Invoke(nameof(...)).

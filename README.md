@@ -196,10 +196,11 @@ The rules the controllers implement:
 - **Banner and MREC arbitrate, then render.** The winner's view is shown from the arbiter callback;
   the loser stays loaded but hidden, because showing it would fire an impression for a bid the
   arbiter did not select. Auto-refresh is off on both sides and the controller drives the cycle: every
-  25 seconds the shown winner (its fill was consumed by the impression) is reloaded while the loser
-  keeps its fill, and a new round runs over both as soon as the reload settles. The docs reload the
-  winner the moment its impression fires; the Unity plugins reload into the view that is on screen,
-  which replaced the visible creative within a second, so this demo reloads at the interval instead.
+  25 seconds the shown winner (its fill was consumed by the impression) is hidden and reloaded, any
+  network without a fill is re-requested, the loser keeps its fill, and a new round runs over all of
+  them as soon as the loads settle. The docs reload the winner the moment its impression fires; the
+  Unity plugins reload into the existing view, which replaced the visible creative within a second
+  and fired an impression no round had selected, so this demo hides and reloads at the interval instead.
 - **AdMob bids carry no price.** CloudX prices them from the revenue the app forwards after each AdMob
   impression: every AdMob ad's `OnAdPaid` goes into `CloudXSdk.ReportRevenueData`. This is a required
   part of the integration, not telemetry; without it CloudX never learns what AdMob pays and its
@@ -208,9 +209,10 @@ The rules the controllers implement:
   candidate and wins every round locally.
 
 The status lines show the arbitration as it happens: which sides loaded, what the arbiter returned and
-over how many bids (`Arbiter: CloudX (2 bids)`), and which platform is showing. Banner and MREC toggle
-Show/Hide and their labels name the platform on screen (`Hide Banner (AdMob)`), or read `no winner`
-when a round selected nobody.
+over how many bids (`Arbiter: CloudX (2 bids)`), and which platform is showing. Banner and MREC have no
+status line of their own, so their buttons carry it: they toggle Show/Hide and the label names the
+platform on screen and the bids it beat (`Hide Banner (AdMob, 2 bids)`), or reads `no winner` when a
+round selected nobody.
 
 <img src="docs/images/arbiter-inline.png" width="260" alt="Arbiter/TPA screen with the arbitrated banner and MREC on screen">
 

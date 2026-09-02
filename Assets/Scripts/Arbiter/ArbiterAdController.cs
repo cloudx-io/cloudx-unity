@@ -103,7 +103,20 @@ public abstract class ArbiterAdController : IDisposable
             {
                 onResult(result);
             }
+            else
+            {
+                OnArbiterResultInvalidated();
+            }
         });
+    }
+
+    /*
+     * A result arrived for a round that Hide() invalidated while it was in
+     * flight. Nothing may be shown from it, but the family may need to start the
+     * round the user asked for in the meantime.
+     */
+    protected virtual void OnArbiterResultInvalidated()
+    {
     }
 
     private void Decide(List<CloudXArbiterBid> bids, Action<CloudXArbiterResult> onResult)

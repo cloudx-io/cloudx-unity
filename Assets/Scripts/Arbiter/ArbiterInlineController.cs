@@ -16,19 +16,21 @@ using GoogleMobileAds.Api;
  *  1. The shown winner's impression marks its fill as consumed; the loser keeps
  *     its fill.
  *  2. Rounds repeat on RefreshIntervalSeconds (docs: 20-30 s). When the
- *     interval elapses the consumed winner (and any network without a fill) is
- *     reloaded, and the round runs once those loads settle. Settled loads never
- *     start a round on their own once something is on screen, so there is
- *     exactly one arbiter call per interval and never one over a half-loaded
- *     candidate set.
+ *     interval elapses the shown view is hidden, the consumed winner and any
+ *     network without a fill are reloaded, and the round runs once those loads
+ *     settle. Settled loads never start a round on their own once something is
+ *     on screen, so there is exactly one arbiter call per interval and never
+ *     one over a half-loaded candidate set.
  *  3. Only the new winner's view is shown; the other is hidden.
  *
  * One deliberate deviation from the docs' cycle, which reloads the winner the
- * moment its impression fires: both Unity plugins reload into the view that is
- * on screen, so an immediate reload replaced the visible creative within a
- * second of showing it (verified on device, with a second AdMob paid event).
- * Reloading at the interval keeps each shown creative up for the whole
- * interval; the cost is the load latency before the swap.
+ * moment its impression fires: both Unity plugins reload into the existing
+ * view, so a reload of the view on screen replaced the visible creative within
+ * a second of showing it and fired a second AdMob paid event (verified on
+ * device) - an impression for an ad no round had selected. Here the shown
+ * creative stays up for the whole interval, is hidden before its reload, and
+ * the next round decides what appears; the cost is the load latency during
+ * which the slot is empty.
  *
  * CloudX inline auto-refresh is opt-out: the concrete's CloudXCreateAndLoad calls
  * Stop*AutoRefresh before create and nothing here calls Start*AutoRefresh. AdMob
@@ -169,10 +171,10 @@ public abstract class ArbiterInlineController : ArbiterAdController
         _wantShown = false;
         _refreshTimer = 0f;
         InvalidateInFlightArbiter();
-        HideBothViews();
-        /* Before the shown platform is forgotten: a consumed fill must not be re-shown later. */
+        /* A consumed fill must not be re-shown later; hides the views either way. */
         ReloadConsumedWinner();
         _shownPlatform = null;
+        HideBothViews();
     }
 
     /* Advances the refresh clock; called every frame by the owner. */
@@ -187,16 +189,24 @@ public abstract class ArbiterInlineController : ArbiterAdController
 
         if (_refreshTimer >= _refreshIntervalSeconds)
         {
+            /*
+             * Interval elapsed: take the consumed winner down and request every
+             * missing fill (docs step 3: re-request only the networks that did
+             * not fill). Load() is a no-op for a side that is loaded or loading,
+             * so a round follows as soon as anything outstanding settles.
+             */
             ReloadConsumedWinner();
+            Load();
             TryRunRound();
         }
     }
 
     /*
-     * Requests the next fill for the winner whose impression fired. Runs when
-     * the interval elapses (or the ad is hidden), never right after the
-     * impression - see the class note. Load() also re-requests any network that
-     * did not fill last round.
+     * Drops the fill of the winner whose impression fired and hides its view, so
+     * the reload cannot render a creative no round has selected. Runs when the
+     * interval elapses (or the ad is hidden), never right after the impression
+     * - see the class note. Nothing is on screen afterwards, so the next round
+     * is due as soon as the loads settle.
      */
     private void ReloadConsumedWinner()
     {
@@ -216,6 +226,8 @@ public abstract class ArbiterInlineController : ArbiterAdController
             _adMobLoaded = false;
         }
 
+        _shownPlatform = null;
+        HideBothViews();
         Load();
     }
 
@@ -253,16 +265,9 @@ public abstract class ArbiterInlineController : ArbiterAdController
         if (bids.Count == 0)
         {
             /*
-             * Nothing to arbitrate. With a stale creative still on screen, keep it
-             * up and re-request both fills on the interval; with nothing shown,
-             * the screen's backoff retry owns the reload.
+             * Nothing to arbitrate: both loads failed. The screen's backoff retry
+             * owns the reload (NeedsRetry is true here).
              */
-            if (_shownPlatform != null)
-            {
-                _refreshTimer = 0f;
-                Load();
-            }
-
             return;
         }
 
@@ -300,6 +305,13 @@ public abstract class ArbiterInlineController : ArbiterAdController
                 break;
         }
     }
+
+    /*
+     * Hide() invalidated a round while it was in flight and Show() may have been
+     * tapped again since; that Show() found the arbiter busy, so the round it
+     * asked for starts here.
+     */
+    protected override void OnArbiterResultInvalidated() => TryRunRound();
 
     private void ShowingWinner(CloudXArbiterPlatform platform)
     {
