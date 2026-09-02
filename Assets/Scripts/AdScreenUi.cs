@@ -54,6 +54,7 @@ public class AdScreenUi : MonoBehaviour
     private const float LandscapeCompactButtonHeight = 36f;
     private const float LandscapeCompactStatusWidth = 300f;
     private const float LandscapeCompactStatusHeight = 28f;
+    private const float LandscapeInitStatusWidth = 460f;
 
     private Actions _actions;
     /* Controls the screen hid on purpose; the orientation reflow leaves these alone. */
@@ -64,6 +65,15 @@ public class AdScreenUi : MonoBehaviour
     private RectTransform _landscapeTitle;
     private RectTransform[] _landscapeMainLeft;
     private RectTransform[] _landscapeMainRight;
+    /*
+     * Landscape pairs each per-button status with its button so they share a
+     * row; the initialization status is global and gets its own bottom line.
+     */
+    private RectTransform _landscapeInitStatus;
+    private RectTransform _interstitialButtonRect;
+    private RectTransform _rewardedButtonRect;
+    private RectTransform _interstitialStatusRect;
+    private RectTransform _rewardedStatusRect;
     private RectTransform _landscapeViewport;
     private RectTransform _landscapeContent;
     private bool _layoutReady;
@@ -177,6 +187,11 @@ public class AdScreenUi : MonoBehaviour
             initializationStatusText,
             interstitialStatusText,
             rewardedStatusText);
+        _landscapeInitStatus = RectOf(initializationStatusText);
+        _interstitialButtonRect = RectOf(showInterstitialButton);
+        _rewardedButtonRect = RectOf(showRewardedButton);
+        _interstitialStatusRect = RectOf(interstitialStatusText);
+        _rewardedStatusRect = RectOf(rewardedStatusText);
 
         var snapshotRects = new List<RectTransform>();
         if (_landscapeTitle != null)
@@ -204,6 +219,11 @@ public class AdScreenUi : MonoBehaviour
         CreateLandscapeViewport();
         _layoutReady = true;
         ApplyOrientationLayout(Screen.width > Screen.height);
+    }
+
+    private static RectTransform RectOf(Component component)
+    {
+        return component != null ? component.transform as RectTransform : null;
     }
 
     private static RectTransform[] CollectRects(params Component[] components)
@@ -318,14 +338,48 @@ public class AdScreenUi : MonoBehaviour
         _controlsParentedToLandscape = true;
     }
 
+    /*
+     * Buttons stack on the left; each one that owns a status gets it on the same
+     * row to the right, so a button and its status never drift apart when other
+     * buttons are hidden. The initialization status is not tied to a button, so
+     * it sits on its own line below the columns, as it does in portrait.
+     */
     private void PlaceLandscapeStacks()
     {
-        PlaceCompactStack(
-            _landscapeMainLeft, 0.28f, 0.72f,
-            LandscapeCompactButtonWidth, LandscapeCompactButtonHeight, 0.12f);
-        PlaceCompactStack(
-            _landscapeMainRight, 0.72f, 0.72f,
-            LandscapeCompactStatusWidth, LandscapeCompactStatusHeight, 0.12f);
+        const float topY = 0.72f;
+        const float step = 0.12f;
+        var slot = 0;
+        foreach (var button in _landscapeMainLeft)
+        {
+            if (_hidden.Contains(button))
+                continue;
+
+            var y = topY - slot * step;
+            PlaceAnchored(
+                button, 0.28f, y,
+                LandscapeCompactButtonWidth, LandscapeCompactButtonHeight);
+
+            var status = StatusForButton(button);
+            if (status != null)
+                PlaceAnchored(
+                    status, 0.72f, y,
+                    LandscapeCompactStatusWidth, LandscapeCompactStatusHeight);
+
+            slot++;
+        }
+
+        PlaceAnchored(
+            _landscapeInitStatus, 0.5f, 0.16f,
+            LandscapeInitStatusWidth, LandscapeCompactStatusHeight);
+    }
+
+    private RectTransform StatusForButton(RectTransform button)
+    {
+        if (button == _interstitialButtonRect)
+            return _interstitialStatusRect;
+        if (button == _rewardedButtonRect)
+            return _rewardedStatusRect;
+        return null;
     }
 
     private static void PlaceAnchored(RectTransform rect, float anchorX, float anchorY, float width, float height)
