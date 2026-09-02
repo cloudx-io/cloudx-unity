@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -6,7 +5,8 @@ using UnityEngine.UI;
 /*
  * Demo-only launch screen. Picks which demo flow to enter. General routes to
  * GeneralScene, where the CloudX integration sample lives; First Look routes to
- * FirstLookScene, the CloudX-first-with-AdMob-fallback template; Arbiter/TPA is WIP.
+ * FirstLookScene, the CloudX-first-with-AdMob-fallback template. Arbiter/TPA is
+ * not implemented yet, so its button stays hidden.
  */
 public class OptionsScreen : MonoBehaviour
 {
@@ -22,7 +22,9 @@ public class OptionsScreen : MonoBehaviour
     {
         generalButton.onClick.AddListener(OpenGeneral);
         firstLookButton.onClick.AddListener(OpenFirstLook);
-        arbiterTpaButton.onClick.AddListener(OpenArbiterTpa);
+
+        /* Nothing to route to yet; hide the button rather than leave it dead. */
+        arbiterTpaButton.gameObject.SetActive(false);
     }
 
     private void OpenGeneral()
@@ -36,6 +38,4 @@ public class OptionsScreen : MonoBehaviour
         Debug.Log($"[{TAG}] Opening the First Look demo");
         SceneManager.LoadScene(FirstLookSceneName);
     }
-
-    private void OpenArbiterTpa() => throw new NotImplementedException("Arbiter/TPA demo is not implemented yet");
 }
