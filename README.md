@@ -103,6 +103,9 @@ The rules the controllers implement:
   ready. The caller just carries on with the game; the demo says so and reloads.
 - If CloudX initialization fails outright, the controllers skip the CloudX leg and serve AdMob
   directly, rather than waiting for load callbacks that a failed init never delivers.
+- A failed load or show is retried with a capped backoff (2 s, 4 s, 8 s ... up to 60 s), reset by the
+  next successful load. A fixed short retry would turn sustained no-fill into a tight request loop
+  against the fallback network.
 
 The status text names which SDK won, so you can see the pattern working:
 
@@ -130,7 +133,8 @@ To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookC
 It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
 
 First Look currently covers interstitial and rewarded. Banner and MREC come later, and their buttons
-are hidden on this screen until then.
+are hidden on this screen until then - through `AdScreenUi.SetButtonVisible`, so the hide survives
+rotation, which otherwise re-activates every control it reflows.
 
 ### Google Mobile Ads dependency
 

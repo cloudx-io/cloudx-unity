@@ -2,6 +2,7 @@ using System.Collections;
 using CloudX;
 using CloudX.Demo;
 using GoogleMobileAds.Api;
+using GoogleMobileAds.Common;
 using UnityEngine;
 
 /*
@@ -16,13 +17,23 @@ using UnityEngine;
 public class FirstLookScreen : MonoBehaviour
 {
     private const string TAG = "CloudXUnityDemo";
-    private const float FullscreenRetryDelaySeconds = 2f;
     private const float InitializationUiTimeoutSeconds = 15f;
+
+    /*
+     * Retry policy after a load or show failure: 2s, 4s, 8s ... capped, and
+     * reset once a load succeeds. A fixed short delay turns sustained no-fill
+     * into a tight request loop against the fallback network, which ad
+     * networks penalise.
+     */
+    private const float RetryBaseDelaySeconds = 2f;
+    private const float RetryMaxDelaySeconds = 60f;
 
     private AdScreenUi _ui;
     private FirstLookInterstitialController _interstitial;
     private FirstLookRewardedController _rewarded;
     private bool _cloudXInitAnswered;
+    private int _interstitialRetries;
+    private int _rewardedRetries;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
 
@@ -37,9 +48,12 @@ public class FirstLookScreen : MonoBehaviour
     {
         Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
 
-        /* Banner and MREC First Look are a later stage; hide their buttons. */
-        _ui.showBannerButton.gameObject.SetActive(false);
-        _ui.showMrecButton.gameObject.SetActive(false);
+        /*
+         * Banner and MREC First Look are a later stage; hide their buttons.
+         * Through the UI, not SetActive, so the hide survives rotation.
+         */
+        _ui.SetButtonVisible(_ui.showBannerButton, false);
+        _ui.SetButtonVisible(_ui.showMrecButton, false);
 
         _ui.Bind(new AdScreenUi.Actions
         {
@@ -90,20 +104,18 @@ public class FirstLookScreen : MonoBehaviour
     private void InitializeAdMob()
     {
         /*
-         * Without this, Google Mobile Ads raises its callbacks off the Unity
-         * main thread, where touching UI objects throws.
-         */
-        MobileAds.RaiseAdEventsOnUnityMainThread = true;
-
-        /*
          * No need to wait for this before loading: the fallback is lazy, and
          * Google Mobile Ads queues loads issued before init completes.
+         *
+         * Google Mobile Ads raises its callbacks off the Unity main thread;
+         * anything that touches UI goes through ExecuteInUpdate. The controllers
+         * do the same for every ad event they forward.
          */
-        MobileAds.Initialize(_ =>
+        MobileAds.Initialize(_ => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
             _adMobStatus = "AdMob: Ready";
             PublishInitializationStatus();
-        });
+        }));
     }
 
     private void InitializeCloudX()
@@ -129,8 +141,22 @@ public class FirstLookScreen : MonoBehaviour
 
     private void OnCloudXInitialized(CloudXSdkConfiguration _)
     {
-        Log("CloudX initialized");
         _cloudXInitAnswered = true;
+
+        if (_interstitial != null || _rewarded != null)
+        {
+            /*
+             * The watchdog already gave up on CloudX and built AdMob-only
+             * controllers. Swapping them now would destroy an AdMob ad that
+             * may be on screen, so this session stays as it is and says so.
+             */
+            Log("CloudX initialized after the watchdog; this session stays AdMob-only");
+            _cloudXStatus = "CloudX: Initialized late - AdMob only this session";
+            PublishInitializationStatus();
+            return;
+        }
+
+        Log("CloudX initialized");
         _cloudXStatus = "CloudX: Initialized";
         PublishInitializationStatus();
         CreateControllers(cloudXAvailable: true);
@@ -180,17 +206,23 @@ public class FirstLookScreen : MonoBehaviour
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
             FirstLookConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
-        _interstitial.AdLoaded += source => SetInterstitialStatus($"Loaded ({source})");
+        _interstitial.AdLoaded += source =>
+        {
+            _interstitialRetries = 0;
+            SetInterstitialStatus($"Loaded ({source})");
+        };
         _interstitial.AdLoadFailed += (source, message) =>
         {
-            SetInterstitialStatus($"Load failed ({source}): {message}\nRetrying in {FullscreenRetryDelaySeconds}s...");
-            Invoke(nameof(LoadInterstitial), FullscreenRetryDelaySeconds);
+            var delay = NextRetryDelay(ref _interstitialRetries);
+            SetInterstitialStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
+            Invoke(nameof(LoadInterstitial), delay);
         };
         _interstitial.AdShown += source => SetInterstitialStatus($"Showing ({source})");
         _interstitial.AdShowFailed += (source, message) =>
         {
-            SetInterstitialStatus($"Show failed ({source}): {message}\nRetrying in {FullscreenRetryDelaySeconds}s...");
-            Invoke(nameof(LoadInterstitial), FullscreenRetryDelaySeconds);
+            var delay = NextRetryDelay(ref _interstitialRetries);
+            SetInterstitialStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
+            Invoke(nameof(LoadInterstitial), delay);
         };
         _interstitial.AdClosed += source =>
         {
@@ -204,17 +236,23 @@ public class FirstLookScreen : MonoBehaviour
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.RewardedAdUnitId),
             FirstLookConfig.AdMobRewardedAdUnitId,
             cloudXAvailable);
-        _rewarded.AdLoaded += source => SetRewardedStatus($"Loaded ({source})");
+        _rewarded.AdLoaded += source =>
+        {
+            _rewardedRetries = 0;
+            SetRewardedStatus($"Loaded ({source})");
+        };
         _rewarded.AdLoadFailed += (source, message) =>
         {
-            SetRewardedStatus($"Load failed ({source}): {message}\nRetrying in {FullscreenRetryDelaySeconds}s...");
-            Invoke(nameof(LoadRewarded), FullscreenRetryDelaySeconds);
+            var delay = NextRetryDelay(ref _rewardedRetries);
+            SetRewardedStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
+            Invoke(nameof(LoadRewarded), delay);
         };
         _rewarded.AdShown += source => SetRewardedStatus($"Showing ({source})");
         _rewarded.AdShowFailed += (source, message) =>
         {
-            SetRewardedStatus($"Show failed ({source}): {message}\nRetrying in {FullscreenRetryDelaySeconds}s...");
-            Invoke(nameof(LoadRewarded), FullscreenRetryDelaySeconds);
+            var delay = NextRetryDelay(ref _rewardedRetries);
+            SetRewardedStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
+            Invoke(nameof(LoadRewarded), delay);
         };
         _rewarded.AdClosed += source =>
         {
@@ -267,6 +305,13 @@ public class FirstLookScreen : MonoBehaviour
 
         SetRewardedStatus("No ad ready; reloading");
         LoadRewarded();
+    }
+
+    private static float NextRetryDelay(ref int retries)
+    {
+        var delay = Mathf.Min(RetryBaseDelaySeconds * Mathf.Pow(2f, retries), RetryMaxDelaySeconds);
+        retries++;
+        return delay;
     }
 
     /*

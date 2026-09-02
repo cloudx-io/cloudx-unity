@@ -56,6 +56,8 @@ public class AdScreenUi : MonoBehaviour
     private const float LandscapeCompactStatusHeight = 28f;
 
     private Actions _actions;
+    /* Controls the screen hid on purpose; the orientation reflow leaves these alone. */
+    private readonly HashSet<RectTransform> _hidden = new HashSet<RectTransform>();
     private Canvas _canvas;
     private ControlSnapshot[] _portraitSnapshots;
     private TextStyleSnapshot[] _portraitTextStyles;
@@ -108,6 +110,25 @@ public class AdScreenUi : MonoBehaviour
         {
             button.interactable = interactable;
         }
+    }
+
+    /*
+     * Hides or shows one of the buttons for the life of the screen. A plain
+     * SetActive(false) from the caller does not survive rotation: the landscape
+     * and portrait reflows re-activate every control they move. Hidden controls
+     * are skipped there, and the landscape stack closes up around them.
+     */
+    public void SetButtonVisible(Button button, bool visible)
+    {
+        var rect = button.transform as RectTransform;
+        if (visible)
+            _hidden.Remove(rect);
+        else
+            _hidden.Add(rect);
+        button.gameObject.SetActive(visible);
+
+        if (_controlsParentedToLandscape)
+            PlaceLandscapeStacks();
     }
 
     public void SetInitializationStatus(string text)
@@ -292,14 +313,19 @@ public class AdScreenUi : MonoBehaviour
         foreach (var snap in _portraitSnapshots)
             snap.Rect.SetParent(_landscapeContent, false);
         PlaceAnchored(_landscapeTitle, 0.5f, 0.90f, 520f, 28f);
+        PlaceLandscapeStacks();
+        ApplyLandscapeMainTypography();
+        _controlsParentedToLandscape = true;
+    }
+
+    private void PlaceLandscapeStacks()
+    {
         PlaceCompactStack(
             _landscapeMainLeft, 0.28f, 0.72f,
             LandscapeCompactButtonWidth, LandscapeCompactButtonHeight, 0.12f);
         PlaceCompactStack(
             _landscapeMainRight, 0.72f, 0.72f,
             LandscapeCompactStatusWidth, LandscapeCompactStatusHeight, 0.12f);
-        ApplyLandscapeMainTypography();
-        _controlsParentedToLandscape = true;
     }
 
     private static void PlaceAnchored(RectTransform rect, float anchorX, float anchorY, float width, float height)
@@ -313,18 +339,25 @@ public class AdScreenUi : MonoBehaviour
         rect.sizeDelta = new Vector2(width, height);
     }
 
-    private static void PlaceCompactStack(
+    /* Hidden controls take no slot, so the visible ones stay a contiguous column. */
+    private void PlaceCompactStack(
         RectTransform[] rects, float anchorX, float topY, float width, float height, float step)
     {
-        for (var i = 0; i < rects.Length; i++)
-            PlaceAnchored(rects[i], anchorX, topY - i * step, width, height);
+        var slot = 0;
+        foreach (var rect in rects)
+        {
+            if (_hidden.Contains(rect))
+                continue;
+            PlaceAnchored(rect, anchorX, topY - slot * step, width, height);
+            slot++;
+        }
     }
 
-    private static void SetActiveAll(RectTransform[] rects, bool active)
+    private void SetActiveAll(RectTransform[] rects, bool active)
     {
         foreach (var rect in rects)
         {
-            if (rect != null)
+            if (rect != null && !_hidden.Contains(rect))
                 rect.gameObject.SetActive(active);
         }
     }
@@ -420,7 +453,10 @@ public class AdScreenUi : MonoBehaviour
             }
         }
         foreach (var snap in _portraitSnapshots)
-            snap.Rect.gameObject.SetActive(true);
+        {
+            if (!_hidden.Contains(snap.Rect))
+                snap.Rect.gameObject.SetActive(true);
+        }
         RestorePortraitTextStyles();
         _controlsParentedToLandscape = false;
         Log("Portrait layout restored");

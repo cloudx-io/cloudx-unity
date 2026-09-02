@@ -1,6 +1,7 @@
 using System;
 using CloudX;
 using GoogleMobileAds.Api;
+using GoogleMobileAds.Common;
 
 /*
  * First Look interstitial: CloudX gets the first chance to fill; AdMob loads
@@ -10,18 +11,12 @@ using GoogleMobileAds.Api;
  */
 public sealed class FirstLookInterstitialController : IDisposable
 {
-    public enum Source
-    {
-        CloudX,
-        AdMob,
-    }
-
-    public event Action<Source> AdLoaded;
-    public event Action<Source, string> AdLoadFailed;
-    public event Action<Source> AdShown;
-    public event Action<Source, string> AdShowFailed;
-    public event Action<Source> AdClosed;
-    public event Action<Source> AdClicked;
+    public event Action<FirstLookSource> AdLoaded;
+    public event Action<FirstLookSource, string> AdLoadFailed;
+    public event Action<FirstLookSource> AdShown;
+    public event Action<FirstLookSource, string> AdShowFailed;
+    public event Action<FirstLookSource> AdClosed;
+    public event Action<FirstLookSource> AdClicked;
 
     private readonly string cloudXAdUnitId;
     private readonly string adMobAdUnitId;
@@ -40,7 +35,7 @@ public sealed class FirstLookInterstitialController : IDisposable
     public FirstLookInterstitialController(
         string cloudXAdUnitId,
         string adMobAdUnitId,
-        bool cloudXAvailable = true)
+        bool cloudXAvailable)
     {
         this.cloudXAdUnitId = cloudXAdUnitId;
         this.adMobAdUnitId = adMobAdUnitId;
@@ -55,7 +50,7 @@ public sealed class FirstLookInterstitialController : IDisposable
     }
 
     /* The source Show() would use right now; null when no ad is ready. */
-    public Source? ReadySource
+    public FirstLookSource? ReadySource
     {
         get
         {
@@ -66,12 +61,12 @@ public sealed class FirstLookInterstitialController : IDisposable
 
             if (cloudXAvailable && CloudXSdk.IsInterstitialReady(cloudXAdUnitId))
             {
-                return Source.CloudX;
+                return FirstLookSource.CloudX;
             }
 
             if (adMobInterstitial != null && adMobInterstitial.CanShowAd())
             {
-                return Source.AdMob;
+                return FirstLookSource.AdMob;
             }
 
             return null;
@@ -143,7 +138,7 @@ public sealed class FirstLookInterstitialController : IDisposable
         }
 
         isLoadingCloudX = false;
-        AdLoaded?.Invoke(Source.CloudX);
+        AdLoaded?.Invoke(FirstLookSource.CloudX);
     }
 
     private void OnCloudXLoadFailed(string adUnitId, CloudXError _)
@@ -161,7 +156,7 @@ public sealed class FirstLookInterstitialController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdShown?.Invoke(Source.CloudX);
+            AdShown?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -174,7 +169,7 @@ public sealed class FirstLookInterstitialController : IDisposable
 
         if (!ShowAdMobFallback())
         {
-            AdShowFailed?.Invoke(Source.CloudX, error.Message);
+            AdShowFailed?.Invoke(FirstLookSource.CloudX, error.Message);
         }
     }
 
@@ -182,7 +177,7 @@ public sealed class FirstLookInterstitialController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdClosed?.Invoke(Source.CloudX);
+            AdClosed?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -190,7 +185,7 @@ public sealed class FirstLookInterstitialController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdClicked?.Invoke(Source.CloudX);
+            AdClicked?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -206,10 +201,16 @@ public sealed class FirstLookInterstitialController : IDisposable
         isLoadingAdMob = true;
         DestroyAdMobInterstitial();
 
+        /*
+         * Google Mobile Ads raises its callbacks off the Unity main thread.
+         * ExecuteInUpdate moves the whole body onto it, so controller state and
+         * the events subscribers use for UI both stay on one thread, like the
+         * CloudX callbacks above.
+         */
         InterstitialAd.Load(
             adMobAdUnitId,
             new AdRequest(),
-            (ad, error) =>
+            (ad, error) => MobileAdsEventExecutor.ExecuteInUpdate(() =>
             {
                 isLoadingAdMob = false;
 
@@ -222,15 +223,15 @@ public sealed class FirstLookInterstitialController : IDisposable
                 if (error != null || ad == null)
                 {
                     AdLoadFailed?.Invoke(
-                        Source.AdMob,
+                        FirstLookSource.AdMob,
                         error?.GetMessage() ?? "AdMob returned no ad");
                     return;
                 }
 
                 adMobInterstitial = ad;
                 RegisterAdMobEvents(ad);
-                AdLoaded?.Invoke(Source.AdMob);
-            });
+                AdLoaded?.Invoke(FirstLookSource.AdMob);
+            }));
     }
 
     private bool ShowAdMobFallback()
@@ -246,23 +247,23 @@ public sealed class FirstLookInterstitialController : IDisposable
 
     private void RegisterAdMobEvents(InterstitialAd ad)
     {
-        ad.OnAdFullScreenContentOpened += () =>
-            AdShown?.Invoke(Source.AdMob);
+        ad.OnAdFullScreenContentOpened += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
+            AdShown?.Invoke(FirstLookSource.AdMob));
 
-        ad.OnAdFullScreenContentClosed += () =>
+        ad.OnAdFullScreenContentClosed += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
             DestroyAdMobInterstitial();
-            AdClosed?.Invoke(Source.AdMob);
-        };
+            AdClosed?.Invoke(FirstLookSource.AdMob);
+        });
 
-        ad.OnAdFullScreenContentFailed += error =>
+        ad.OnAdFullScreenContentFailed += error => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
             DestroyAdMobInterstitial();
-            AdShowFailed?.Invoke(Source.AdMob, error.GetMessage());
-        };
+            AdShowFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
+        });
 
-        ad.OnAdClicked += () =>
-            AdClicked?.Invoke(Source.AdMob);
+        ad.OnAdClicked += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
+            AdClicked?.Invoke(FirstLookSource.AdMob));
     }
 
     private void DestroyAdMobInterstitial()

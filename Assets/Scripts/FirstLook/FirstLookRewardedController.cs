@@ -1,6 +1,7 @@
 using System;
 using CloudX;
 using GoogleMobileAds.Api;
+using GoogleMobileAds.Common;
 
 /*
  * First Look rewarded: CloudX gets the first chance to fill; AdMob loads
@@ -11,19 +12,13 @@ using GoogleMobileAds.Api;
  */
 public sealed class FirstLookRewardedController : IDisposable
 {
-    public enum Source
-    {
-        CloudX,
-        AdMob,
-    }
-
-    public event Action<Source> AdLoaded;
-    public event Action<Source, string> AdLoadFailed;
-    public event Action<Source> AdShown;
-    public event Action<Source, string> AdShowFailed;
-    public event Action<Source> AdClosed;
-    public event Action<Source> AdClicked;
-    public event Action<Source, string> RewardEarned;
+    public event Action<FirstLookSource> AdLoaded;
+    public event Action<FirstLookSource, string> AdLoadFailed;
+    public event Action<FirstLookSource> AdShown;
+    public event Action<FirstLookSource, string> AdShowFailed;
+    public event Action<FirstLookSource> AdClosed;
+    public event Action<FirstLookSource> AdClicked;
+    public event Action<FirstLookSource, string> RewardEarned;
 
     private readonly string cloudXAdUnitId;
     private readonly string adMobAdUnitId;
@@ -42,7 +37,7 @@ public sealed class FirstLookRewardedController : IDisposable
     public FirstLookRewardedController(
         string cloudXAdUnitId,
         string adMobAdUnitId,
-        bool cloudXAvailable = true)
+        bool cloudXAvailable)
     {
         this.cloudXAdUnitId = cloudXAdUnitId;
         this.adMobAdUnitId = adMobAdUnitId;
@@ -58,7 +53,7 @@ public sealed class FirstLookRewardedController : IDisposable
     }
 
     /* The source Show() would use right now; null when no ad is ready. */
-    public Source? ReadySource
+    public FirstLookSource? ReadySource
     {
         get
         {
@@ -69,12 +64,12 @@ public sealed class FirstLookRewardedController : IDisposable
 
             if (cloudXAvailable && CloudXSdk.IsRewardedReady(cloudXAdUnitId))
             {
-                return Source.CloudX;
+                return FirstLookSource.CloudX;
             }
 
             if (adMobRewarded != null && adMobRewarded.CanShowAd())
             {
-                return Source.AdMob;
+                return FirstLookSource.AdMob;
             }
 
             return null;
@@ -147,7 +142,7 @@ public sealed class FirstLookRewardedController : IDisposable
         }
 
         isLoadingCloudX = false;
-        AdLoaded?.Invoke(Source.CloudX);
+        AdLoaded?.Invoke(FirstLookSource.CloudX);
     }
 
     private void OnCloudXLoadFailed(string adUnitId, CloudXError _)
@@ -165,7 +160,7 @@ public sealed class FirstLookRewardedController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdShown?.Invoke(Source.CloudX);
+            AdShown?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -178,7 +173,7 @@ public sealed class FirstLookRewardedController : IDisposable
 
         if (!ShowAdMobFallback())
         {
-            AdShowFailed?.Invoke(Source.CloudX, error.Message);
+            AdShowFailed?.Invoke(FirstLookSource.CloudX, error.Message);
         }
     }
 
@@ -186,7 +181,7 @@ public sealed class FirstLookRewardedController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdClosed?.Invoke(Source.CloudX);
+            AdClosed?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -194,7 +189,7 @@ public sealed class FirstLookRewardedController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            AdClicked?.Invoke(Source.CloudX);
+            AdClicked?.Invoke(FirstLookSource.CloudX);
         }
     }
 
@@ -202,7 +197,7 @@ public sealed class FirstLookRewardedController : IDisposable
     {
         if (ad.AdUnitId == cloudXAdUnitId)
         {
-            RewardEarned?.Invoke(Source.CloudX, $"{reward.Amount} {reward.Label}");
+            RewardEarned?.Invoke(FirstLookSource.CloudX, $"{reward.Amount} {reward.Label}");
         }
     }
 
@@ -218,10 +213,16 @@ public sealed class FirstLookRewardedController : IDisposable
         isLoadingAdMob = true;
         DestroyAdMobRewarded();
 
+        /*
+         * Google Mobile Ads raises its callbacks off the Unity main thread.
+         * ExecuteInUpdate moves the whole body onto it, so controller state and
+         * the events subscribers use for UI both stay on one thread, like the
+         * CloudX callbacks above.
+         */
         RewardedAd.Load(
             adMobAdUnitId,
             new AdRequest(),
-            (ad, error) =>
+            (ad, error) => MobileAdsEventExecutor.ExecuteInUpdate(() =>
             {
                 isLoadingAdMob = false;
 
@@ -234,15 +235,15 @@ public sealed class FirstLookRewardedController : IDisposable
                 if (error != null || ad == null)
                 {
                     AdLoadFailed?.Invoke(
-                        Source.AdMob,
+                        FirstLookSource.AdMob,
                         error?.GetMessage() ?? "AdMob returned no ad");
                     return;
                 }
 
                 adMobRewarded = ad;
                 RegisterAdMobEvents(ad);
-                AdLoaded?.Invoke(Source.AdMob);
-            });
+                AdLoaded?.Invoke(FirstLookSource.AdMob);
+            }));
     }
 
     private bool ShowAdMobFallback()
@@ -252,30 +253,30 @@ public sealed class FirstLookRewardedController : IDisposable
             return false;
         }
 
-        adMobRewarded.Show(reward =>
-            RewardEarned?.Invoke(Source.AdMob, $"{reward.Amount} {reward.Type}"));
+        adMobRewarded.Show(reward => MobileAdsEventExecutor.ExecuteInUpdate(() =>
+            RewardEarned?.Invoke(FirstLookSource.AdMob, $"{reward.Amount} {reward.Type}")));
         return true;
     }
 
     private void RegisterAdMobEvents(RewardedAd ad)
     {
-        ad.OnAdFullScreenContentOpened += () =>
-            AdShown?.Invoke(Source.AdMob);
+        ad.OnAdFullScreenContentOpened += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
+            AdShown?.Invoke(FirstLookSource.AdMob));
 
-        ad.OnAdFullScreenContentClosed += () =>
+        ad.OnAdFullScreenContentClosed += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
             DestroyAdMobRewarded();
-            AdClosed?.Invoke(Source.AdMob);
-        };
+            AdClosed?.Invoke(FirstLookSource.AdMob);
+        });
 
-        ad.OnAdFullScreenContentFailed += error =>
+        ad.OnAdFullScreenContentFailed += error => MobileAdsEventExecutor.ExecuteInUpdate(() =>
         {
             DestroyAdMobRewarded();
-            AdShowFailed?.Invoke(Source.AdMob, error.GetMessage());
-        };
+            AdShowFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
+        });
 
-        ad.OnAdClicked += () =>
-            AdClicked?.Invoke(Source.AdMob);
+        ad.OnAdClicked += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
+            AdClicked?.Invoke(FirstLookSource.AdMob));
     }
 
     private void DestroyAdMobRewarded()
