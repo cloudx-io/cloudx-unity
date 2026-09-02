@@ -280,7 +280,9 @@ public class FirstLookScreen : MonoBehaviour
             _bannerRetries = 0;
             Log($"Banner loaded ({source})");
             if (!_banner.IsShown)
+            {
                 _ui.SetBannerButtonLabel("Show Banner");
+            }
         };
         _banner.AdLoadFailed += (source, message) =>
         {
@@ -300,7 +302,9 @@ public class FirstLookScreen : MonoBehaviour
             _mrecRetries = 0;
             Log($"MREC loaded ({source})");
             if (!_mrec.IsShown)
+            {
                 _ui.SetMrecButtonLabel("Show MREC");
+            }
         };
         _mrec.AdLoadFailed += (source, message) =>
         {

@@ -88,7 +88,7 @@ failure than letting a tester poke the not-ready paths.
 
 ### First Look screen
 
-<img src="docs/images/first-look-screen.png" width="260" alt="First Look screen with both formats loaded from CloudX">
+<img src="docs/images/first-look-screen.png" width="260" alt="First Look screen with all four formats loaded from CloudX">
 
 First Look gives CloudX the first chance to fill a placement and falls back to AdMob only when CloudX
 cannot. The full pattern is documented at
@@ -131,8 +131,10 @@ screen, so the folder can be copied out whole:
 | `FirstLookConfig.cs` | AdMob ad unit ids, and the fallback test switch below. |
 | `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
 
-Each format is a thin subclass over a shared base, so the fallback rule is written once. Integrating
-one format means taking the base plus that format's file; the base is small and format-agnostic.
+Each format is a thin subclass over a shared base, so the fallback rule is written once. To integrate
+one format, take four files: `FirstLookSource.cs`, `FirstLookAdController.cs`, the family base
+(`FirstLookFullscreenController.cs` for interstitial or rewarded, `FirstLookInlineController.cs` for
+banner or MREC) and that format's controller. The bases are small and format-agnostic.
 
 To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookConfig.cs` and rebuild.
 It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
@@ -140,6 +142,11 @@ It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob ser
 First Look covers all four formats. Banner and MREC toggle Show/Hide, and the button label names the
 SDK that filled (e.g. `Hide Banner (CloudX)`). The banner is a horizontal top banner in both
 orientations; the MREC is a 300x250 at the bottom.
+
+<img src="docs/images/first-look-inline.png" width="260" alt="First Look screen with the CloudX banner at the top and the CloudX MREC at the bottom">
+
+Both inline ads shown at once, filled by CloudX; the labels read `Hide Banner (CloudX)` and
+`Hide MREC (CloudX)`.
 
 Banner and MREC keep auto-refresh **off** so a background reload never overrides the First Look
 source decision. CloudX inline auto-refresh is opt-out - showing an inline ad starts it unless the ad
