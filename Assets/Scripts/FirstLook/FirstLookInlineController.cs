@@ -14,9 +14,15 @@ using CloudX;
  * CloudXCreateAndLoad therefore calls Stop*AutoRefresh before create, and
  * nothing here ever calls Start*AutoRefresh - so a background reload never
  * overrides the First Look source decision. (GeneralScreen restarts refresh on
- * focus; First Look intentionally does not.) AdMob has no code-level refresh -
- * a BannerView loads once - so its refresh is only the dashboard ad-unit
- * setting, off for the test units used here.
+ * focus; First Look intentionally does not.)
+ *
+ * AdMob is the half this code cannot handle: the Google Mobile Ads Unity plugin
+ * has no refresh API at all. A BannerView loads once, and whether it refreshes
+ * afterwards is decided solely by the ad unit's Automatic refresh setting in
+ * the AdMob console. Publishers MUST set that to Disabled on every banner and
+ * MREC unit used as a First Look fallback; otherwise AdMob swaps the creative
+ * on its own schedule and silently replaces the ad that won the First Look
+ * pass.
  */
 public abstract class FirstLookInlineController : FirstLookAdController
 {

@@ -73,9 +73,12 @@ public sealed class FirstLookBannerController : FirstLookInlineController
         DestroyAdMobAd();
 
         /*
-         * A BannerView loads once and never refreshes from code, so nothing here
-         * needs to disable refresh. Google Mobile Ads raises its callbacks off
-         * the Unity main thread; ExecuteInUpdate moves them back on.
+         * A BannerView loads once; there is no refresh API to turn off here. Its
+         * refresh is the ad unit's Automatic refresh setting in the AdMob console,
+         * which MUST be Disabled for this unit - otherwise AdMob replaces the ad
+         * on its own schedule behind First Look's back. Google Mobile Ads raises
+         * its callbacks off the Unity main thread; ExecuteInUpdate moves them
+         * back on.
          */
         _adMobBanner = new BannerView(AdMobAdUnitId, AdSize.Banner, AdPosition.Top);
 

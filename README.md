@@ -152,9 +152,19 @@ Banner and MREC keep auto-refresh **off** so a background reload never overrides
 source decision. CloudX inline auto-refresh is opt-out - showing an inline ad starts it unless the ad
 unit was first passed to `Stop*AutoRefresh` - so the controllers call `StopBannerAutoRefresh` /
 `StopMrecAutoRefresh` before create and never call the `Start*` counterparts. (GeneralScreen
-restarts refresh on focus; First Look deliberately does not.) AdMob has no code-level refresh - a
-`BannerView` loads once - so its refresh is only the dashboard ad-unit setting, off for these test
-units.
+restarts refresh on focus; First Look deliberately does not.)
+
+> **Disable automatic refresh on your AdMob banner and MREC ad units.**
+>
+> This is the one step the code cannot do for you. The Google Mobile Ads Unity plugin has no
+> refresh API: a `BannerView` loads once, and whether it refreshes afterwards is decided solely by
+> the ad unit's **Automatic refresh** setting in the AdMob console (Ad units > your banner or MREC >
+> Advanced settings). If that setting is on, AdMob swaps the creative on its own schedule, and
+> every swap silently replaces the ad that won the First Look pass - CloudX never gets asked again
+> for that slot. Set it to **Disabled** on every AdMob unit you use as a First Look fallback.
+>
+> The demo's Google test units are configured by Google, not by this project, so treat them only
+> as a way to see the fallback render; the setting above is about the units you replace them with.
 
 ### Google Mobile Ads dependency
 

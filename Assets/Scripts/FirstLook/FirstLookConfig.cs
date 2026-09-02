@@ -2,6 +2,10 @@
  * Fallback-side configuration for the First Look demo. The CloudX ad unit ids
  * come from DemoConfig; these are Google's official AdMob TEST ad unit ids.
  * Replace them with your own AdMob ad units in a real integration.
+ *
+ * When you do, set Automatic refresh to Disabled on the banner and MREC units
+ * in the AdMob console. The Unity plugin cannot control it, and a refreshing
+ * AdMob banner would replace the ad that won the First Look pass.
  */
 public static class FirstLookConfig
 {
