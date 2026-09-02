@@ -121,20 +121,33 @@ screen, so the folder can be copied out whole:
 
 | File | Role |
 | --- | --- |
-| `FirstLookInterstitialController.cs` | The interstitial pattern: load, fallback, show, dispose. |
-| `FirstLookRewardedController.cs` | The same for rewarded, plus the reward callback. |
+| `FirstLookAdController.cs` | Shared base: the CloudX/AdMob bookkeeping, load events, and dispose. |
+| `FirstLookFullscreenController.cs` | Base for the fullscreen formats (interstitial, rewarded). |
+| `FirstLookInlineController.cs` | Base for the inline formats (banner, MREC), including refresh-off. |
+| `FirstLookInterstitialController.cs` | The interstitial SDK calls. |
+| `FirstLookRewardedController.cs` | The rewarded SDK calls, plus the reward callback. |
+| `FirstLookBannerController.cs` | The banner SDK calls. |
+| `FirstLookMrecController.cs` | The MREC SDK calls. |
 | `FirstLookConfig.cs` | AdMob ad unit ids, and the fallback test switch below. |
 | `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
 
-The two controllers are deliberately separate files with no shared base class, so integrating one
-format means copying one file.
+Each format is a thin subclass over a shared base, so the fallback rule is written once. Integrating
+one format means taking the base plus that format's file; the base is small and format-agnostic.
 
 To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookConfig.cs` and rebuild.
 It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
 
-First Look currently covers interstitial and rewarded. Banner and MREC come later, and their buttons
-are hidden on this screen until then - through `AdScreenUi.SetButtonVisible`, so the hide survives
-rotation, which otherwise re-activates every control it reflows.
+First Look covers all four formats. Banner and MREC toggle Show/Hide, and the button label names the
+SDK that filled (e.g. `Hide Banner (CloudX)`). The banner is a horizontal top banner in both
+orientations; the MREC is a 300x250 at the bottom.
+
+Banner and MREC keep auto-refresh **off** so a background reload never overrides the First Look
+source decision. CloudX inline auto-refresh is opt-out - showing an inline ad starts it unless the ad
+unit was first passed to `Stop*AutoRefresh` - so the controllers call `StopBannerAutoRefresh` /
+`StopMrecAutoRefresh` before create and never call the `Start*` counterparts. (GeneralScreen
+restarts refresh on focus; First Look deliberately does not.) AdMob has no code-level refresh - a
+`BannerView` loads once - so its refresh is only the dashboard ad-unit setting, off for these test
+units.
 
 ### Google Mobile Ads dependency
 

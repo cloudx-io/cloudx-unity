@@ -8,10 +8,18 @@ public static class FirstLookConfig
 #if UNITY_IOS
     public const string AdMobInterstitialAdUnitId = "ca-app-pub-3940256099942544/4411468910";
     public const string AdMobRewardedAdUnitId = "ca-app-pub-3940256099942544/1712485313";
+    public const string AdMobBannerAdUnitId = "ca-app-pub-3940256099942544/2934735716";
 #else
     public const string AdMobInterstitialAdUnitId = "ca-app-pub-3940256099942544/1033173712";
     public const string AdMobRewardedAdUnitId = "ca-app-pub-3940256099942544/5224354917";
+    public const string AdMobBannerAdUnitId = "ca-app-pub-3940256099942544/6300978111";
 #endif
+
+    /*
+     * Google has no dedicated MREC test unit; its banner test unit returns a
+     * test ad at whatever AdSize is requested, so it serves the 300x250 MREC too.
+     */
+    public const string AdMobMrecAdUnitId = AdMobBannerAdUnitId;
 
     /*
      * Flip to true to exercise the AdMob fallback path: CloudX is asked to fill
