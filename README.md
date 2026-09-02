@@ -7,7 +7,8 @@ Our complete CloudX Unity SDK integration guide is available on our docs site, [
 ## Demo app
 
 This repository is also a runnable Unity demo project. It shows a working CloudX integration for
-banner, MREC, interstitial and rewarded ads, plus a First Look flow that falls back to AdMob.
+banner, MREC (the 300x250 medium rectangle), interstitial and rewarded ads, plus a First Look flow
+that falls back to AdMob.
 
 Requirements:
 
@@ -88,7 +89,7 @@ failure than letting a tester poke the not-ready paths.
 
 ### First Look screen
 
-<img src="docs/images/first-look-screen.png" width="260" alt="First Look screen with both formats loaded from CloudX">
+<img src="docs/images/first-look-screen.png" width="260" alt="First Look screen with all four format buttons">
 
 First Look gives CloudX the first chance to fill a placement and falls back to AdMob only when CloudX
 cannot. The full pattern is documented at
@@ -100,7 +101,9 @@ The rules the controllers implement:
 - CloudX is asked first. AdMob is loaded **lazily**, only after CloudX reports a load failure.
 - The two are never loaded in parallel, so the fallback costs nothing when CloudX fills.
 - `Show()` prefers a ready CloudX ad over a ready AdMob one, and returns `false` when neither is
-  ready. The caller just carries on with the game; the demo says so and reloads.
+  ready. For interstitial and rewarded the caller just carries on with the game; the demo says so and
+  reloads. For banner and MREC a `Show()` with nothing ready is remembered, and the ad appears as soon
+  as either source loads; `Hide()` cancels that.
 - If CloudX initialization fails outright, the controllers skip the CloudX leg and serve AdMob
   directly, rather than waiting for load callbacks that a failed init never delivers.
 - A failed load or show is retried with a capped backoff (2 s, 4 s, 8 s ... up to 60 s), reset by the
@@ -121,20 +124,51 @@ screen, so the folder can be copied out whole:
 
 | File | Role |
 | --- | --- |
-| `FirstLookInterstitialController.cs` | The interstitial pattern: load, fallback, show, dispose. |
-| `FirstLookRewardedController.cs` | The same for rewarded, plus the reward callback. |
+| `FirstLookSource.cs` | The `CloudX` / `AdMob` enum every event reports. |
+| `FirstLookAdController.cs` | Shared base: the CloudX/AdMob bookkeeping, load events, and dispose. |
+| `FirstLookFullscreenController.cs` | Base for the fullscreen formats (interstitial, rewarded). |
+| `FirstLookInlineController.cs` | Base for the inline formats (banner, MREC), including refresh-off. |
+| `FirstLookInterstitialController.cs` | The interstitial SDK calls. |
+| `FirstLookRewardedController.cs` | The rewarded SDK calls, plus the reward callback. |
+| `FirstLookBannerController.cs` | The banner SDK calls. |
+| `FirstLookMrecController.cs` | The MREC SDK calls. |
 | `FirstLookConfig.cs` | AdMob ad unit ids, and the fallback test switch below. |
 | `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
 
-The two controllers are deliberately separate files with no shared base class, so integrating one
-format means copying one file.
+Each format is a thin subclass over a shared base, so the fallback rule is written once. To integrate
+one format, take four files: `FirstLookSource.cs`, `FirstLookAdController.cs`, the family base
+(`FirstLookFullscreenController.cs` for interstitial or rewarded, `FirstLookInlineController.cs` for
+banner or MREC) and that format's controller. The bases are small and format-agnostic.
 
 To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookConfig.cs` and rebuild.
 It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
 
-First Look currently covers interstitial and rewarded. Banner and MREC come later, and their buttons
-are hidden on this screen until then - through `AdScreenUi.SetButtonVisible`, so the hide survives
-rotation, which otherwise re-activates every control it reflows.
+First Look covers all four formats. Banner and MREC toggle Show/Hide, and the button label names the
+SDK that filled (e.g. `Hide Banner (CloudX)`). The banner sits at the top in both orientations; the
+MREC is a 300x250 at the bottom.
+
+<img src="docs/images/first-look-inline.png" width="260" alt="First Look screen with the CloudX banner at the top and the CloudX MREC at the bottom">
+
+Both inline ads shown at once, filled by CloudX; the labels read `Hide Banner (CloudX)` and
+`Hide MREC (CloudX)`.
+
+Banner and MREC keep auto-refresh **off** so a background reload never overrides the First Look
+source decision. CloudX inline auto-refresh is opt-out - showing an inline ad starts it unless the ad
+unit was first passed to `Stop*AutoRefresh` - so the controllers call `StopBannerAutoRefresh` /
+`StopMrecAutoRefresh` before create and never call the `Start*` counterparts. (GeneralScreen
+restarts refresh on focus; First Look deliberately does not.)
+
+> **Disable automatic refresh on your AdMob banner and MREC ad units.**
+>
+> This is the one step the code cannot do for you. The Google Mobile Ads Unity plugin has no
+> refresh API: a `BannerView` loads once, and whether it refreshes afterwards is decided solely by
+> the ad unit's **Automatic refresh** setting in the AdMob console, in the settings of each banner
+> and MREC ad unit. If that setting is on, AdMob swaps the creative on its own schedule, and
+> every swap silently replaces the ad that won the First Look pass - CloudX never gets asked again
+> for that slot. Set it to **Disabled** on every AdMob unit you use as a First Look fallback.
+>
+> The demo's Google test units are configured by Google, not by this project, so treat them only
+> as a way to see the fallback render; the setting above is about the units you replace them with.
 
 ### Google Mobile Ads dependency
 
@@ -161,7 +195,8 @@ Bid requests are authorized per app key and bundle identifier, so both have to m
 app or the SDK gets no fill.
 
 The AdMob ad units in `FirstLookConfig.cs` are Google's official test units and stay valid as they
-are; replace them with your own AdMob units when you take this into production.
+are; replace them with your own AdMob units when you take this into production, and set
+**Automatic refresh** to Disabled on the banner and MREC ones (see the First Look section for why).
 
 ### iOS target SDK
 

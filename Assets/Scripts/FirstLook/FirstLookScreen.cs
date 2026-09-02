@@ -8,10 +8,13 @@ using UnityEngine;
 /*
  * First Look demo entry point and integration template: CloudX gets the first
  * chance to fill each placement and AdMob is the lazy fallback. The flow lives
- * entirely in this folder (screen + one controller per format) so it can be
- * copied into a publisher app as-is; AdScreenUi is demo-only layout and is
- * kept out on purpose. Interstitial and rewarded only for now - banner and
- * MREC First Look come later, so their buttons are hidden.
+ * entirely in this folder (screen + a shared controller base + one controller
+ * per format) so it can be copied into a publisher app as-is; AdScreenUi is
+ * demo-only layout and is kept out on purpose. Covers all four formats -
+ * interstitial, rewarded, banner and MREC. Banner and MREC keep CloudX
+ * auto-refresh off (it is opt-out) so a background reload never overrides the
+ * First Look source decision; GeneralScreen restarts refresh on focus, this
+ * screen deliberately does not.
  */
 [RequireComponent(typeof(AdScreenUi))]
 public class FirstLookScreen : MonoBehaviour
@@ -31,9 +34,13 @@ public class FirstLookScreen : MonoBehaviour
     private AdScreenUi _ui;
     private FirstLookInterstitialController _interstitial;
     private FirstLookRewardedController _rewarded;
+    private FirstLookBannerController _banner;
+    private FirstLookMrecController _mrec;
     private bool _cloudXInitAnswered;
     private int _interstitialRetries;
     private int _rewardedRetries;
+    private int _bannerRetries;
+    private int _mrecRetries;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
 
@@ -48,19 +55,13 @@ public class FirstLookScreen : MonoBehaviour
     {
         Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
 
-        /*
-         * Banner and MREC First Look are a later stage; hide their buttons.
-         * Through the UI, not SetActive, so the hide survives rotation.
-         */
-        _ui.SetButtonVisible(_ui.showBannerButton, false);
-        _ui.SetButtonVisible(_ui.showMrecButton, false);
-
         _ui.Bind(new AdScreenUi.Actions
         {
-            ShowBanner = () => { },
-            ToggleMrec = () => { },
+            ShowBanner = ToggleBanner,
+            ToggleMrec = ToggleMrec,
             ShowInterstitial = ShowInterstitial,
             ShowRewarded = ShowRewarded,
+            /* The banner stays at the top in both orientations, so nothing to reflow. */
             OnOrientationChanged = _ => { },
         });
         _ui.SetActionsInteractable(false);
@@ -95,6 +96,10 @@ public class FirstLookScreen : MonoBehaviour
         _interstitial = null;
         _rewarded?.Dispose();
         _rewarded = null;
+        _banner?.Dispose();
+        _banner = null;
+        _mrec?.Dispose();
+        _mrec = null;
     }
 
     /*
@@ -266,8 +271,54 @@ public class FirstLookScreen : MonoBehaviour
             SetRewardedStatus($"Reward: {reward} ({source})");
         };
 
+        _banner = new FirstLookBannerController(
+            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
+            FirstLookConfig.AdMobBannerAdUnitId,
+            cloudXAvailable);
+        _banner.AdLoaded += source =>
+        {
+            _bannerRetries = 0;
+            Log($"Banner loaded ({source})");
+            if (!_banner.IsShown)
+            {
+                _ui.SetBannerButtonLabel("Show Banner");
+            }
+        };
+        _banner.AdLoadFailed += (source, message) =>
+        {
+            var delay = NextRetryDelay(ref _bannerRetries);
+            Log($"Banner load failed ({source}): {message}; retrying in {delay:0}s");
+            Invoke(nameof(LoadBanner), delay);
+        };
+        _banner.AdShown += source => _ui.SetBannerButtonLabel($"Hide Banner ({source})");
+        _banner.AdClicked += source => Log($"Banner clicked ({source})");
+
+        _mrec = new FirstLookMrecController(
+            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.MrecAdUnitId),
+            FirstLookConfig.AdMobMrecAdUnitId,
+            cloudXAvailable);
+        _mrec.AdLoaded += source =>
+        {
+            _mrecRetries = 0;
+            Log($"MREC loaded ({source})");
+            if (!_mrec.IsShown)
+            {
+                _ui.SetMrecButtonLabel("Show MREC");
+            }
+        };
+        _mrec.AdLoadFailed += (source, message) =>
+        {
+            var delay = NextRetryDelay(ref _mrecRetries);
+            Log($"MREC load failed ({source}): {message}; retrying in {delay:0}s");
+            Invoke(nameof(LoadMrec), delay);
+        };
+        _mrec.AdShown += source => _ui.SetMrecButtonLabel($"Hide MREC ({source})");
+        _mrec.AdClicked += source => Log($"MREC clicked ({source})");
+
         LoadInterstitial();
         LoadRewarded();
+        LoadBanner();
+        LoadMrec();
         _ui.SetActionsInteractable(true);
     }
 
@@ -307,6 +358,39 @@ public class FirstLookScreen : MonoBehaviour
         LoadRewarded();
     }
 
+    private void ToggleBanner()
+    {
+        if (_banner.IsShown)
+        {
+            _banner.Hide();
+            _ui.SetBannerButtonLabel("Show Banner");
+            return;
+        }
+
+        /* AdShown updates the label once a source actually shows. */
+        if (!_banner.Show())
+        {
+            _ui.SetBannerButtonLabel("Banner: loading...");
+            LoadBanner();
+        }
+    }
+
+    private void ToggleMrec()
+    {
+        if (_mrec.IsShown)
+        {
+            _mrec.Hide();
+            _ui.SetMrecButtonLabel("Show MREC");
+            return;
+        }
+
+        if (!_mrec.Show())
+        {
+            _ui.SetMrecButtonLabel("MREC: loading...");
+            LoadMrec();
+        }
+    }
+
     private static float NextRetryDelay(ref int retries)
     {
         var delay = Mathf.Min(RetryBaseDelaySeconds * Mathf.Pow(2f, retries), RetryMaxDelaySeconds);
@@ -326,6 +410,16 @@ public class FirstLookScreen : MonoBehaviour
     private void LoadRewarded()
     {
         _rewarded?.Load();
+    }
+
+    private void LoadBanner()
+    {
+        _banner?.Load();
+    }
+
+    private void LoadMrec()
+    {
+        _mrec?.Load();
     }
 
     /*
