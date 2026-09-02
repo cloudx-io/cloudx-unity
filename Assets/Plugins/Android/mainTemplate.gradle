@@ -5,6 +5,11 @@ apply from: '../shared/keepUnitySymbols.gradle'
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 // Android Resolver Dependencies Start
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4' // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:12
+    implementation 'androidx.fragment:fragment:1.7.1' // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:22
+    implementation 'androidx.lifecycle:lifecycle-process:2.6.2' // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:17
+    implementation 'com.google.android.gms:play-services-ads:25.4.0' // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:7
+    implementation 'com.google.android.ump:user-messaging-platform:4.0.0' // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleUmpDependencies.xml:7
     implementation 'io.cloudx:adapter-digitalturbine:8.4.7.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:20
     implementation 'io.cloudx:adapter-googlewaterfall:25.2.0.3' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:19
     implementation 'io.cloudx:adapter-inmobi:11.4.0.1' // Assets/Scripts/Editor/CloudXDemoDependencies.xml:13

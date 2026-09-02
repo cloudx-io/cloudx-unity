@@ -34,6 +34,9 @@ dependencyResolutionManagement {
         maven {
             url "https://maven.singular.net" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11
         }
+        maven {
+            url "https://maven.google.com/" // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:7, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:12, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:17, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:22, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleUmpDependencies.xml:7
+        }
         mavenLocal()
 // Android Resolver Repos End
         flatDir {
