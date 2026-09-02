@@ -20,16 +20,19 @@ dependencyResolutionManagement {
         mavenCentral()
 // Android Resolver Repos Start
         maven {
-            url "https://dl-maven-android.mintegral.com/repository/mbridge_android_sdk_oversea" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:9, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
+            url "https://dl-maven-android.mintegral.com/repository/mbridge_android_sdk_oversea" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
         }
         maven {
-            url "https://verve.jfrog.io/artifactory/verve-gradle-release" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:9, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
+            url "https://verve.jfrog.io/artifactory/verve-gradle-release" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
         }
         maven {
-            url "https://artifact.bytedance.com/repository/pangle" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:9, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
+            url "https://artifact.bytedance.com/repository/pangle" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
         }
         maven {
-            url "https://artifact.taurusx.com/artifactory/taurusx-sdk/" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:9, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
+            url "https://artifact.taurusx.com/artifactory/taurusx-sdk/" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11, Assets/Scripts/Editor/CloudXDemoDependencies.xml:9
+        }
+        maven {
+            url "https://maven.singular.net" // Assets/CloudXSdk/Editor/CloudXDependencies.xml:11
         }
         maven {
             url "https://maven.google.com/" // Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:7, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:12, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:17, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleMobileAdsDependencies.xml:22, Packages/com.google.ads.mobile/GoogleMobileAds/Editor/GoogleUmpDependencies.xml:7

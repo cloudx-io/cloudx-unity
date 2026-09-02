@@ -160,7 +160,7 @@ internal class AndroidDelegate : PlatformDelegate
     private void CallCreateBanner(string methodName, string adUnitId, string positionArgument)
     {
         var callback = new BannerListenerProxy();
-        var revenueCallback = new RevenueListenerProxy();
+        var revenueCallback = new RevenueListenerProxy(keepInBackground: false);
 
         // Wire up lifecycle events
         callback.AdLoaded += BannerAdLoadSuccess;
@@ -253,7 +253,7 @@ internal class AndroidDelegate : PlatformDelegate
     public void CreateMrec(string adUnitId, CloudXAdViewConfiguration.AdViewPosition position)
     {
         var callback = new BannerListenerProxy();
-        var revenueCallback = new RevenueListenerProxy();
+        var revenueCallback = new RevenueListenerProxy(keepInBackground: false);
 
         callback.AdLoaded += MrecAdLoadSuccess;
         callback.AdLoadFailed += MrecAdLoadFailed;
@@ -333,7 +333,7 @@ internal class AndroidDelegate : PlatformDelegate
     public void LoadInterstitial(string adUnitId)
     {
         var callback = new InterstitialListenerProxy();
-        var revenueCallback = new RevenueListenerProxy();
+        var revenueCallback = new RevenueListenerProxy(keepInBackground: true);
 
         // Wire up all lifecycle events
         callback.AdLoaded += InterstitialAdLoadSuccess;
@@ -386,7 +386,7 @@ internal class AndroidDelegate : PlatformDelegate
     public void LoadAppOpen(string adUnitId)
     {
         var callback = new AppOpenListenerProxy();
-        var revenueCallback = new RevenueListenerProxy();
+        var revenueCallback = new RevenueListenerProxy(keepInBackground: true);
 
         callback.AdLoaded += AppOpenAdLoadSuccess;
         callback.AdLoadFailed += AppOpenAdLoadFailed;
@@ -437,7 +437,7 @@ internal class AndroidDelegate : PlatformDelegate
     public void LoadRewarded(string adUnitId)
     {
         var callback = new RewardedListenerProxy();
-        var revenueCallback = new RevenueListenerProxy();
+        var revenueCallback = new RevenueListenerProxy(keepInBackground: true);
 
         // Wire up all lifecycle events
         callback.AdLoaded += RewardedAdLoadSuccess;

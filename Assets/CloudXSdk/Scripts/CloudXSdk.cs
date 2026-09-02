@@ -10,7 +10,7 @@ namespace CloudX
     {
         private static readonly PlatformDelegate PlatformDelegate;
         internal static readonly Logger Log = new Logger("CloudXUnityPlugin");
-        internal const string PluginVersion = "unity-4.5.1";
+        internal const string PluginVersion = "unity-4.6.1";
 
         static CloudXSdk()
         {
@@ -64,6 +64,26 @@ namespace CloudX
             PlatformDelegate.RewardedAdRewarded += CloudXAdsCallbacks.Rewarded.OnAdRewardedInternal;
             PlatformDelegate.RewardedAdRevenuePaid += CloudXAdsCallbacks.Rewarded.OnAdRevenuePaidInternal;
         }
+
+        /// <summary>
+        /// Controls which thread CloudX callbacks are invoked on.
+        /// <list type="bullet">
+        /// <item><c>null</c> (default): ad lifecycle, initialization, Trusted Arbiter and banner/MREC
+        /// <c>OnAdRevenuePaid</c> callbacks run on the Unity main thread. <c>OnAdRevenuePaid</c> for the
+        /// fullscreen formats (interstitial, app open, rewarded) is delivered immediately on the native
+        /// callback thread, so it arrives while the ad is showing instead of after it closes.</item>
+        /// <item><c>true</c>: every callback, including <c>OnAdRevenuePaid</c>, runs on the Unity main thread
+        /// (adds up to one frame of latency). On Android the Unity player is paused while a fullscreen ad
+        /// Activity is in front, so callbacks raised during the ad (show, revenue) are delivered when the
+        /// ad closes.</item>
+        /// <item><c>false</c>: every callback runs inline on the native callback thread; handlers must not
+        /// use Unity APIs.</item>
+        /// </list>
+        /// Read on each callback, so it can be set at any time; set it before <see cref="Initialize"/> to
+        /// cover initialization callbacks. A handler that throws is logged at ERROR with its type and method
+        /// and does not affect other handlers.
+        /// </summary>
+        public static bool? InvokeEventsOnUnityMainThread { get; set; }
 
         public static string GetVersion()
         {
@@ -143,6 +163,9 @@ namespace CloudX
         /// <summary>
         /// Reports publisher-observed impression-level ad revenue, such as an AdMob paid event.
         /// Returns false when the payload is invalid or the native SDK rejects the event.
+        /// An invalid payload logs which field was wrong at <see cref="CloudXLogLevel.Warn"/>;
+        /// call <see cref="SetMinLogLevel"/> with that level or lower any time before this
+        /// call to see it.
         /// </summary>
         public static bool ReportRevenueData(CloudXRevenueData data)
         {

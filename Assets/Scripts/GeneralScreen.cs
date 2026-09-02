@@ -169,6 +169,24 @@ public class GeneralScreen : MonoBehaviour
         CloudXSdk.SetHasUserConsent(true);
         CloudXSdk.SetDoNotSell(false);
 
+        /*
+         * Callback threading. The demo keeps the default, so this stays commented out.
+         * Set it before Initialize so it also covers the initialization callbacks.
+         *
+         * Left unset (default): every callback runs on the Unity main thread, except
+         * OnAdRevenuePaid for interstitial, app open and rewarded ads. Those arrive on a
+         * background thread, because the game is paused or covered while a fullscreen ad
+         * is showing and a main-thread callback may only run after the ad closes.
+         * Banner and MREC revenue runs on the main thread like everything else.
+         *
+         * true: every callback, revenue included, runs on the Unity main thread. Fullscreen
+         * revenue may then reach you after the ad closes rather than at impression time.
+         *
+         * false: every callback runs on a background thread. Fastest delivery, but your
+         * handlers must not touch Unity APIs and must marshal to the main thread themselves.
+         */
+        // CloudXSdk.InvokeEventsOnUnityMainThread = true;
+
         CloudXInitializationCallbacks.OnSdkInitializedEvent += OnSdkInitialized;
         CloudXInitializationCallbacks.OnSdkInitializationFailedEvent += OnSdkInitializationFailed;
 
