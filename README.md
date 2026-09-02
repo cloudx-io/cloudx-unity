@@ -140,8 +140,8 @@ To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookC
 It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
 
 First Look covers all four formats. Banner and MREC toggle Show/Hide, and the button label names the
-SDK that filled (e.g. `Hide Banner (CloudX)`). The banner is a horizontal top banner in both
-orientations; the MREC is a 300x250 at the bottom.
+SDK that filled (e.g. `Hide Banner (CloudX)`). The banner sits at the top in both orientations; the
+MREC is a 300x250 at the bottom.
 
 <img src="docs/images/first-look-inline.png" width="260" alt="First Look screen with the CloudX banner at the top and the CloudX MREC at the bottom">
 

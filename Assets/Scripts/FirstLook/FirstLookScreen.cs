@@ -61,7 +61,7 @@ public class FirstLookScreen : MonoBehaviour
             ToggleMrec = ToggleMrec,
             ShowInterstitial = ShowInterstitial,
             ShowRewarded = ShowRewarded,
-            /* Banner is horizontal in both orientations, so nothing to reflow. */
+            /* The banner stays at the top in both orientations, so nothing to reflow. */
             OnOrientationChanged = _ => { },
         });
         _ui.SetActionsInteractable(false);

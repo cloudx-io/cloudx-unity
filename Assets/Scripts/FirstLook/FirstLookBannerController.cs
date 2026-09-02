@@ -4,7 +4,7 @@ using GoogleMobileAds.Common;
 
 /*
  * First Look banner. Shared flow lives in FirstLookInlineController; this class
- * only supplies the banner SDK calls. Horizontal top banner on both SDKs (see
+ * only supplies the banner SDK calls. Top banner on both SDKs (see
  * FirstLookScreen). Auto-refresh is kept off - see the FirstLookInlineController
  * class note; the crucial call is StopBannerAutoRefresh before create.
  */

@@ -4,8 +4,8 @@ using GoogleMobileAds.Common;
 
 /*
  * First Look MREC (300x250). Same as FirstLookBannerController with the MREC SDK
- * calls: bottom-center on both SDKs, MREC size on AdMob. MREC is horizontal
- * only, so it uses an AdViewPosition (a vertical config throws). Auto-refresh is
+ * calls: bottom-center on both SDKs, MREC size on AdMob. MREC takes an
+ * AdViewPosition only (a vertical config throws). Auto-refresh is
  * kept off - see the FirstLookInlineController class note; the crucial call is
  * StopMrecAutoRefresh before create.
  */
