@@ -209,7 +209,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _interstitial = new FirstLookInterstitialController(
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
-            FirstLookConfig.AdMobInterstitialAdUnitId,
+            DemoConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
         _interstitial.AdLoaded += source =>
         {
@@ -239,7 +239,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _rewarded = new FirstLookRewardedController(
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.RewardedAdUnitId),
-            FirstLookConfig.AdMobRewardedAdUnitId,
+            DemoConfig.AdMobRewardedAdUnitId,
             cloudXAvailable);
         _rewarded.AdLoaded += source =>
         {
@@ -273,7 +273,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _banner = new FirstLookBannerController(
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
-            FirstLookConfig.AdMobBannerAdUnitId,
+            DemoConfig.AdMobBannerAdUnitId,
             cloudXAvailable);
         _banner.AdLoaded += source =>
         {
@@ -295,7 +295,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _mrec = new FirstLookMrecController(
             FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.MrecAdUnitId),
-            FirstLookConfig.AdMobMrecAdUnitId,
+            DemoConfig.AdMobMrecAdUnitId,
             cloudXAvailable);
         _mrec.AdLoaded += source =>
         {

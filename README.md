@@ -7,8 +7,9 @@ Our complete CloudX Unity SDK integration guide is available on our docs site, [
 ## Demo app
 
 This repository is also a runnable Unity demo project. It shows a working CloudX integration for
-banner, MREC (the 300x250 medium rectangle), interstitial and rewarded ads, plus a First Look flow
-that falls back to AdMob.
+banner, MREC (the 300x250 medium rectangle), interstitial and rewarded ads, plus two ways of running
+CloudX next to AdMob: a First Look flow that falls back to AdMob, and an Arbiter/TPA flow where both
+load and Trusted Arbiter picks the winner.
 
 Requirements:
 
@@ -27,8 +28,9 @@ choose, which is deliberate: the iOS tracking prompt and `CloudXSdk.Initialize` 
 you picked, not to app start.
 
 ```
-OptionsScene  ──  General    ──>  GeneralScene    (the full CloudX surface)
-              └─  First Look ──>  FirstLookScene  (CloudX first, AdMob fallback)
+OptionsScene  ──  General     ──>  GeneralScene    (the full CloudX surface)
+              ├─  First Look  ──>  FirstLookScene  (CloudX first, AdMob fallback)
+              └─  Arbiter/TPA ──>  ArbiterScene    (CloudX and AdMob in parallel, arbiter picks)
 ```
 
 There is no back navigation; relaunch the app to pick the other flow.
@@ -38,19 +40,18 @@ There is no back navigation; relaunch the app to pick the other flow.
 | `Assets/Scenes/OptionsScene.unity` | `Assets/Scripts/OptionsScreen.cs` | Picking a flow. No SDK calls. |
 | `Assets/Scenes/GeneralScene.unity` | `Assets/Scripts/GeneralScreen.cs` | Every ad format, straight CloudX. |
 | `Assets/Scenes/FirstLookScene.unity` | `Assets/Scripts/FirstLook/` | CloudX first, AdMob as the fallback. |
+| `Assets/Scenes/ArbiterScene.unity` | `Assets/Scripts/Arbiter/` | CloudX and AdMob in parallel, Trusted Arbiter picks. |
 
-`Assets/Scripts/AdScreenUi.cs` is the layout shared by the two ad screens. It is demo-only: it wires
+`Assets/Scripts/AdScreenUi.cs` is the layout shared by the three ad screens. It is demo-only: it wires
 buttons and reflows on rotate, and contains no SDK calls. Ignore it when reading the integration.
 
 ### Options screen
 
-<img src="docs/images/options-screen.png" width="260" alt="Options screen with General and First Look buttons">
+<img src="docs/images/options-screen.png" width="260" alt="Options screen with General, First Look and Arbiter/TPA buttons">
 
 `OptionsScene` is index 0 in the build settings, so it is what launches. Each button calls
 `SceneManager.LoadScene` with a scene name, which only resolves for scenes listed in
-File > Build Settings, so all three are listed there.
-
-A third flow, Arbiter/TPA, is not implemented yet and its button stays hidden.
+File > Build Settings, so all four are listed there.
 
 ### General screen
 
@@ -132,7 +133,7 @@ screen, so the folder can be copied out whole:
 | `FirstLookRewardedController.cs` | The rewarded SDK calls, plus the reward callback. |
 | `FirstLookBannerController.cs` | The banner SDK calls. |
 | `FirstLookMrecController.cs` | The MREC SDK calls. |
-| `FirstLookConfig.cs` | AdMob ad unit ids, and the fallback test switch below. |
+| `FirstLookConfig.cs` | The fallback test switch below. |
 | `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
 
 Each format is a thin subclass over a shared base, so the fallback rule is written once. To integrate
@@ -141,7 +142,8 @@ one format, take four files: `FirstLookSource.cs`, `FirstLookAdController.cs`, t
 banner or MREC) and that format's controller. The bases are small and format-agnostic.
 
 To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookConfig.cs` and rebuild.
-It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
+It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead. The AdMob
+ad unit ids come from `Assets/Scripts/DemoConfig.cs`, next to the CloudX ones.
 
 First Look covers all four formats. Banner and MREC toggle Show/Hide, and the button label names the
 SDK that filled (e.g. `Hide Banner (CloudX)`). The banner sits at the top in both orientations; the
@@ -170,13 +172,90 @@ restarts refresh on focus; First Look deliberately does not.)
 > The demo's Google test units are configured by Google, not by this project, so treat them only
 > as a way to see the fallback render; the setting above is about the units you replace them with.
 
+### Arbiter/TPA screen
+
+<img src="docs/images/arbiter-screen.png" width="260" alt="Arbiter/TPA screen with the arbiter result in each status line">
+
+Trusted Arbiter (TPA, third-party arbitration) is the other way to run CloudX next to an existing
+mediation SDK. Where First Look asks CloudX first and touches AdMob only on a CloudX miss, the
+Arbiter flow loads **both** at the same time and lets CloudX's arbiter decide which loaded ad is
+shown. The full pattern is documented at
+[https://docs.cloudx.io/en/unity/trusted-arbiter](https://docs.cloudx.io/en/unity/trusted-arbiter);
+this screen is a working copy of it against AdMob, meant to be lifted into a publisher app.
+
+The rules the controllers implement:
+
+- CloudX and AdMob load in parallel. Once both have settled (loaded or failed), the loaded ones
+  become bids and `CloudXSdk.Arbiter` returns the platform to show. Nothing compares prices or times
+  the call out locally: the SDK owns both, and always completes. A single bid wins without a service
+  call; with no arbiter service the SDK falls back to the highest locally comparable price.
+- **Interstitial and rewarded prepare the winner ahead of the placement.** The arbiter runs as soon
+  as the candidates settle and the result is stored; tapping Show shows the stored winner with no
+  network call, and returns `false` when no winner is prepared, so the game carries on. The cycle
+  restarts (reload what is missing, re-arbitrate) after the ad closes.
+- **Banner and MREC arbitrate, then render.** The winner's view is shown from the arbiter callback;
+  the loser stays loaded but hidden, because showing it would fire an impression for a bid the
+  arbiter did not select. Auto-refresh is off on both sides and the controller drives the cycle: every
+  25 seconds the shown winner (its fill was consumed by the impression) is hidden and reloaded, any
+  network without a fill is re-requested, the loser keeps its fill, and a new round runs over all of
+  them as soon as the loads settle. The docs reload the winner the moment its impression fires; the
+  Unity plugins reload into the existing view, which replaced the visible creative within a second
+  and fired an impression no round had selected, so this demo hides and reloads at the interval instead.
+- **AdMob bids carry no price.** CloudX prices them from the revenue the app forwards after each AdMob
+  impression: every AdMob ad's `OnAdPaid` goes into `CloudXSdk.ReportRevenueData`. This is a required
+  part of the integration, not telemetry; without it CloudX never learns what AdMob pays and its
+  estimate for the AdMob bid never improves.
+- If CloudX initialization fails outright, the controllers skip the CloudX leg; AdMob is the only
+  candidate and wins every round locally.
+
+The status lines show the arbitration as it happens: which sides loaded, what the arbiter returned and
+over how many bids (`Arbiter: CloudX (2 bids)`), and which platform is showing. Banner and MREC have no
+status line of their own, so their buttons carry it: they toggle Show/Hide and the label names the
+platform on screen and the bids it beat (`Hide Banner (AdMob, 2 bids)`), or reads `no winner` when a
+round selected nobody.
+
+<img src="docs/images/arbiter-inline.png" width="260" alt="Arbiter/TPA screen with the arbitrated banner and MREC on screen">
+
+Everything the flow needs lives in `Assets/Scripts/Arbiter`, and none of it calls into the other
+screens, so the folder can be copied out whole:
+
+| File | Role |
+| --- | --- |
+| `ArbiterAdController.cs` | Shared base: ids, the arbiter call, the AdMob bid, the paid-event forwarding, dispose. |
+| `ArbiterFullscreenController.cs` | Base for interstitial and rewarded: parallel load, prepare the winner, show it at the placement. |
+| `ArbiterInlineController.cs` | Base for banner and MREC: parallel load, arbitrate, render the winner, refresh cycle. |
+| `ArbiterInterstitialController.cs` | The interstitial SDK calls. |
+| `ArbiterRewardedController.cs` | The rewarded SDK calls, plus the reward callback. |
+| `ArbiterBannerController.cs` | The banner SDK calls. |
+| `ArbiterMrecController.cs` | The MREC SDK calls. |
+| `ArbiterConfig.cs` | The refresh interval and the single-bid test switch below. |
+| `ArbiterScreen.cs` | Initializes both SDKs, wires the controllers to the buttons, feeds the refresh clock. |
+
+To integrate one format, take three files: `ArbiterAdController.cs`, the family base
+(`ArbiterFullscreenController.cs` or `ArbiterInlineController.cs`) and that format's controller.
+The ad unit ids come from `Assets/Scripts/DemoConfig.cs`.
+
+To see the single-bid path yourself, set `ForceCloudXNoFill = true` in `ArbiterConfig.cs` and rebuild.
+It points CloudX at an unknown ad unit, so AdMob is the only bid in every round and the SDK selects it
+without a service call.
+
+> **Two things the code cannot do for you.**
+>
+> Trusted Arbiter has to be enabled for your app in the CloudX dashboard. Until it is, the SDK still
+> answers every `Arbiter` call, but from its local fallback: the highest locally comparable price
+> among the bids, in which an AdMob bid with no reported revenue history yet cannot win.
+>
+> Disable **Automatic refresh** on your AdMob banner and MREC ad units, exactly as for First Look
+> (see the callout above). The arbiter cycle owns refresh here; an AdMob unit that refreshes on its
+> own swaps the creative behind the arbiter's back.
+
 ### Google Mobile Ads dependency
 
-The First Look flow needs the Google Mobile Ads Unity plugin, which this project pulls in as a
+The First Look and Arbiter/TPA flows need the Google Mobile Ads Unity plugin, which this project pulls in as a
 package (`Packages/manifest.json`) along with the External Dependency Manager it requires. Unity
 resolves both on open, so no manual import step is needed.
 
-If you copy the First Look folder into your own project, add the same plugin there; the CloudX SDK
+If you copy the First Look or Arbiter folder into your own project, add the same plugin there; the CloudX SDK
 itself does not depend on it.
 
 ### Using your own CloudX app
@@ -194,8 +273,8 @@ Project Settings > Player > Signing. It ships empty on purpose.
 Bid requests are authorized per app key and bundle identifier, so both have to match your dashboard
 app or the SDK gets no fill.
 
-The AdMob ad units in `FirstLookConfig.cs` are Google's official test units and stay valid as they
-are; replace them with your own AdMob units when you take this into production, and set
+The AdMob ad units in `DemoConfig.cs` are Google's official test units and stay valid as they are;
+replace them with your own AdMob units when you take this into production, and set
 **Automatic refresh** to Disabled on the banner and MREC ones (see the First Look section for why).
 
 ### iOS target SDK
