@@ -74,6 +74,16 @@ public class FirstLookScreen : MonoBehaviour
          */
         yield return DemoAppTrackingiOS.EnsureRequested();
 
+        /*
+         * Log the advertising ID once tracking has been answered. This screen has its
+         * own CloudXSdk.Initialize, so it needs the same read the General screen does -
+         * the CloudX leg no-fills the same way when the device is not whitelisted.
+         * Resolve is idempotent, and the status line here is already the two-part
+         * "CloudX | AdMob" summary, so the verdict stays in the log.
+         */
+        yield return DemoAdvertisingId.Resolve();
+        Log($"Advertising ID: {DemoAdvertisingId.Describe()}");
+
         if (!DemoAppTrackingiOS.IsUsable(DemoAppTrackingiOS.Status))
         {
             Log($"Tracking not authorized ({DemoAppTrackingiOS.Status}), leaving the UI disabled");
