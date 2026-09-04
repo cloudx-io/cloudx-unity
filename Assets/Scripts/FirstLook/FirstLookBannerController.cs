@@ -47,8 +47,9 @@ using GoogleMobileAds.Common;
  *    plugin has no refresh API at all. Whether a BannerView refreshes is decided
  *    solely by the ad unit's Automatic refresh setting in the AdMob console, and
  *    publishers MUST set that to Disabled on every unit used as a First Look
- *    fallback. Google's test units do refresh, so this controller ignores a fill
- *    it did not ask for when counting passes - see OnAdMobLoaded.
+ *    fallback. Google's test units do refresh, so a fill this controller did not
+ *    ask for neither spends a pass nor counts as an unspent one - see
+ *    OnAdMobLoaded and KeepsUnspentFill.
  */
 public sealed class FirstLookBannerController : IDisposable
 {
@@ -275,11 +276,12 @@ public sealed class FirstLookBannerController : IDisposable
         }
     }
 
-    private void ShowIfWanted(FirstLookSource source, bool spendsPass)
+    /* Returns whether the fill went on screen. */
+    private bool ShowIfWanted(FirstLookSource source, bool spendsPass)
     {
         if (!_wantShown)
         {
-            return;
+            return false;
         }
 
         /*
@@ -291,11 +293,24 @@ public sealed class FirstLookBannerController : IDisposable
          */
         if (!spendsPass && _shownSource != null && _shownSource != source)
         {
-            return;
+            return false;
         }
 
         ShowSource(source, spendsPass);
+        return true;
     }
+
+    /*
+     * A fill from a pass may sit here unspent until the slot is shown - that is
+     * what banks an ad for the first tap. A fill nobody asked for may not: if it
+     * is not on screen it has to be forgotten, because ReadySource would
+     * otherwise report it, Load() would skip the next pass, and CloudX would
+     * never be asked again - the very latch this cycle exists to prevent.
+     * Nothing is lost by forgetting it; the native view keeps the creative and
+     * the next pass reloads that side anyway.
+     */
+    private static bool KeepsUnspentFill(bool spendsPass, bool wentOnScreen) =>
+        spendsPass && !wentOnScreen;
 
     private void HideCloudX()
     {
@@ -358,7 +373,9 @@ public sealed class FirstLookBannerController : IDisposable
         _isLoadingCloudX = false;
         _cloudXLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.CloudX);
-        ShowIfWanted(FirstLookSource.CloudX, spendsPass);
+
+        var wentOnScreen = ShowIfWanted(FirstLookSource.CloudX, spendsPass);
+        _cloudXLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
     }
 
     private void CloudXOnLoadFailed(string adUnitId, CloudXError _)
@@ -460,7 +477,9 @@ public sealed class FirstLookBannerController : IDisposable
 
         _adMobLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.AdMob);
-        ShowIfWanted(FirstLookSource.AdMob, spendsPass);
+
+        var wentOnScreen = ShowIfWanted(FirstLookSource.AdMob, spendsPass);
+        _adMobLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
     }
 
     private void DestroyAdMobAd()
