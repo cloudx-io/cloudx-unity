@@ -7,22 +7,20 @@ using GoogleMobileAds.Common;
  * First Look interstitial: CloudX gets the first chance to fill, AdMob loads
  * lazily as the fallback only after CloudX fails. Show() shows CloudX if it is
  * ready, otherwise AdMob, and returns false when neither has an ad - the caller
- * just carries on with the game. Mirrors docs.cloudx.io -> Integrations ->
- * First Look.
+ * just carries on with the game. Copy this file and FirstLookSource.cs into
+ * your project; it is the whole flow, top to bottom, with no base class to
+ * bring along. Reading order: state, the Load/Show entry points, then each
+ * SDK's callbacks.
  *
- * This file is the whole flow, top to bottom, so it can be copied into an app
- * on its own (plus FirstLookSource.cs for the enum). Reading order: state, the
- * Load/Show entry points, then each SDK's callbacks. FirstLookBannerController
- * repeats the same ~50 lines of bookkeeping for the inline case on purpose -
- * each file stays a self-contained example rather than the two of them sharing
- * a base a publisher would also have to copy.
- *
- * Fullscreen ads are consumed by being shown, so readiness is asked of the SDKs
+ * A fullscreen ad is consumed by being shown, so readiness is asked of the SDKs
  * directly (CloudXSdk.IsInterstitialReady / InterstitialAd.CanShowAd) rather
- * than cached. Showing therefore makes both answers false on their own, and the
- * next Load() starts at CloudX again. The inline formats have no such
- * consumption event, which is why FirstLookBannerController needs an explicit
- * pass cycle.
+ * than cached. Showing makes both answers false on their own, so the next
+ * Load() starts at CloudX again with nothing for this class to reset. Rewarded
+ * works the same way; the banner does not, which is why
+ * FirstLookBannerController carries an explicit pass cycle.
+ *
+ * Background and the reasoning behind each rule:
+ * https://docs.cloudx.io/en/unity/integrations/first-look
  */
 public sealed class FirstLookInterstitialController : IDisposable
 {

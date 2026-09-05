@@ -5,51 +5,35 @@ using GoogleMobileAds.Common;
 
 /*
  * First Look banner: CloudX gets the first chance to fill, AdMob loads lazily
- * as the fallback only after CloudX fails. Same rule as
- * FirstLookInterstitialController, but a banner stays on screen instead of
- * being shown once, which changes two things.
+ * as the fallback only after CloudX fails. Copy this file and FirstLookSource.cs
+ * into your project; it is the whole flow, top to bottom, with no base class to
+ * bring along. Reading order: state, the Load/Show/Hide entry points, the pass
+ * cycle, then each SDK's callbacks.
  *
- * This file is the whole flow, top to bottom, so it can be copied into an app
- * on its own (plus FirstLookSource.cs for the enum). Reading order: state, the
- * Load/Show/Hide entry points, the pass cycle, then each SDK's callbacks.
+ * A banner is not the interstitial with different method names. A fullscreen ad
+ * is consumed by being shown, so the SDKs' own readiness answers go false and
+ * the next Load() starts at CloudX again. An inline ad is never consumed -
+ * CloudX banners report load and click, with no show or close callback - so
+ * this controller tracks a loaded flag per source and spends them when an ad
+ * goes on screen. Without that, the first fill owns the placement until the
+ * scene is destroyed and one CloudX no-fill hands the slot to the fallback for
+ * the rest of the session.
  *
- * 1. THE PASS CYCLE. A fullscreen ad is consumed by being shown, so the SDKs'
- *    own "is an ad ready" answers go false and the next Load() naturally starts
- *    at CloudX again. Inline ads have no such event - CloudX banners report
- *    only load and click, no show or close - so this controller tracks a loaded
- *    flag per source, and something has to clear them or the first fill wins the
- *    placement forever.
+ * Two things the host has to do, or the cycle stalls:
  *
- *    One pass = one ad opportunity: CloudX asked first, AdMob only if CloudX
- *    fails, winner displayed. Putting the winner on screen spends the pass,
- *    because a load into an already-visible view renders immediately - so "on
- *    screen" is the one moment this code can treat as "this fill has been
- *    used". ShowSource therefore clears both flags and raises PassSpent, and the
- *    host schedules the next Load() one cooldown later
- *    (FirstLookConfig.PassCooldownSeconds), which starts at CloudX again. An
- *    immediate reload would be a request loop, since the new fill would render
- *    and spend the pass at once.
+ *   1. Start the next pass on PassSpent, after a cooldown of your choosing.
+ *      Reloading immediately is a request loop, because the new fill renders
+ *      into the visible view and spends the next pass at once.
+ *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
+ *      requesting. Show() starts the cycle again.
  *
- *    The host owns the other half of that contract: it must cancel the pending
- *    pass when it calls Hide(), or a hidden slot keeps requesting. See
- *    FirstLookScreen.ToggleBanner and ScheduleNextPass.
+ * Set Automatic refresh to Disabled on the AdMob ad unit you use as the
+ * fallback. The Google Mobile Ads Unity plugin has no refresh API, so that
+ * console setting is the only thing controlling it, and a refreshing BannerView
+ * swaps creatives outside this cycle.
  *
- * 2. AUTO-REFRESH STAYS OFF. CloudX banner auto-refresh is opt-out: showing a
- *    banner starts it automatically unless the ad unit was first passed to
- *    StopBannerAutoRefresh, which also gates LoadBanner. CloudXCreateAndLoad
- *    below therefore calls it before create and nothing here ever calls
- *    StartBannerAutoRefresh - the pass cycle owns reloading, so an SDK refresh
- *    timer would compete with it and could swap the ad out from under the First
- *    Look source decision. (GeneralScreen restarts refresh on focus; First Look
- *    deliberately does not.)
- *
- *    AdMob is the half this code cannot control: the Google Mobile Ads Unity
- *    plugin has no refresh API at all. Whether a BannerView refreshes is decided
- *    solely by the ad unit's Automatic refresh setting in the AdMob console, and
- *    publishers MUST set that to Disabled on every unit used as a First Look
- *    fallback. Google's test units do refresh, so a fill this controller did not
- *    ask for neither spends a pass nor counts as an unspent one - see
- *    OnAdMobLoaded and KeepsUnspentFill.
+ * Background and the reasoning behind each rule:
+ * https://docs.cloudx.io/en/unity/integrations/first-look
  */
 public sealed class FirstLookBannerController : IDisposable
 {
@@ -349,6 +333,10 @@ public sealed class FirstLookBannerController : IDisposable
          * on the first request. CreateBanner also issues the first load, so the
          * OnAdLoadSuccess / OnAdLoadFailed callbacks that drive the source and
          * the fallback come from here - no separate LoadBanner call.
+         *
+         * Both strings are this demo's. Replace them with your own placement
+         * name, and with whatever custom data you report - or drop the custom
+         * data line if you report none.
          */
         CloudXSdk.SetBannerPlacement(_cloudXAdUnitId, "first_look_screen");
         CloudXSdk.SetBannerCustomData(_cloudXAdUnitId, "first_look_banner_data");
