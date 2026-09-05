@@ -6,6 +6,8 @@
  * When you do, set Automatic refresh to Disabled on the banner unit in the
  * AdMob console. The Unity plugin cannot control it, and a refreshing AdMob
  * banner would replace the ad that won the First Look pass.
+ *
+ * https://docs.cloudx.io/en/unity/integrations/first-look
  */
 public static class FirstLookConfig
 {

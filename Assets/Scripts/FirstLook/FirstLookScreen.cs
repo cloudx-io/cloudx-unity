@@ -20,6 +20,12 @@ using UnityEngine;
  * self-contained file, so integrating a format means copying two files: that
  * controller and FirstLookSource.cs. AdScreenUi is demo-only layout and is kept
  * out on purpose; this screen hides the two buttons it does not use.
+ *
+ * This screen is also the reference for the half of the banner contract the
+ * controller cannot keep for you: ScheduleNextBannerPass starts the next pass a
+ * cooldown after PassSpent, and ToggleBanner cancels it on hide.
+ *
+ * https://docs.cloudx.io/en/unity/integrations/first-look
  */
 [RequireComponent(typeof(AdScreenUi))]
 public class FirstLookScreen : MonoBehaviour
