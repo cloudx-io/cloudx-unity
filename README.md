@@ -137,7 +137,7 @@ screen:
 | `FirstLookBannerHud.cs` | When the next pass starts: the clock the controller has no way to keep. |
 | `FirstLookSource.cs` | The `CloudX` / `AdMob` enum every event reports. |
 | `FirstLookConfig.cs` | The AdMob fallback ad unit ids. |
-| `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
+| `FirstLookScreen.cs` | Initializes both SDKs, wires the controller and the hud to the buttons. |
 
 **To integrate the interstitial, copy two files:** `FirstLookInterstitialController.cs` and
 `FirstLookSource.cs`. The banner adds a third, `FirstLookBannerHud.cs`, because a plain class has no
@@ -171,9 +171,10 @@ Three details worth copying as they are:
 - **The cycle only turns while an ad is on screen.** Hiding cancels the pending pass and stops the
   hud retrying a load that was already in flight, so a hidden slot never keeps requesting in the
   background; showing it again puts the same ad back up and restarts the cooldown from that tap.
-  Cancelling alone is not enough - a request already out on the network fails after the hide, long
-  after `CancelInvoke` had anything to cancel, which is why the hud also tracks whether the banner is
-  still wanted. It still preloads once before the first tap, so an ad is ready when the user asks for
+  Cancelling alone is not enough - a request already out on the network completes after the hide,
+  long after `CancelInvoke` had anything to cancel. A fill is harmless, because it is banked for the
+  next show; a failure is not, because its retry would start the requests up again. That is why the
+  hud also tracks whether the banner is still wanted. It still preloads once before the first tap, so an ad is ready when the user asks for
   it.
 - **An ad the AdMob console refreshed on its own does not count as a pass.** Only a fill the
   controller asked for spends one, so an AdMob unit that still has Automatic refresh enabled cannot

@@ -226,14 +226,14 @@ public class FirstLookScreen : MonoBehaviour
         };
         _interstitial.AdLoadFailed += (source, message) =>
         {
-            var delay = NextRetryDelay(ref _interstitialRetries);
+            var delay = NextInterstitialRetryDelay();
             SetInterstitialStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
         _interstitial.AdShown += source => SetInterstitialStatus($"Showing ({source})");
         _interstitial.AdShowFailed += (source, message) =>
         {
-            var delay = NextRetryDelay(ref _interstitialRetries);
+            var delay = NextInterstitialRetryDelay();
             SetInterstitialStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
@@ -302,10 +302,12 @@ public class FirstLookScreen : MonoBehaviour
         _banner.Toggle();
     }
 
-    private static float NextRetryDelay(ref int retries)
+    private float NextInterstitialRetryDelay()
     {
-        var delay = Mathf.Min(RetryBaseDelaySeconds * Mathf.Pow(2f, retries), RetryMaxDelaySeconds);
-        retries++;
+        var delay = Mathf.Min(
+            RetryBaseDelaySeconds * Mathf.Pow(2f, _interstitialRetries),
+            RetryMaxDelaySeconds);
+        _interstitialRetries++;
         return delay;
     }
 
