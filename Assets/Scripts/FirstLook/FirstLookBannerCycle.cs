@@ -80,7 +80,13 @@ public sealed class FirstLookBannerCycle : MonoBehaviour
 
     /*
      * Creates the controller and preloads one pass, so an ad is ready the first
-     * time the player asks for one. Call once, after both SDKs have answered.
+     * time the player asks for one. Call once, after CloudX has answered -
+     * initialized, failed, or past a timeout of your own - passing whether it
+     * actually came up.
+     *
+     * Google Mobile Ads does not have to be ready. It queues loads issued while
+     * it is still initializing, and the fallback is lazy in any case, so
+     * waiting for it as well would only delay the first pass.
      */
     public void Begin(string cloudXAdUnitId, string adMobAdUnitId, bool cloudXAvailable)
     {
