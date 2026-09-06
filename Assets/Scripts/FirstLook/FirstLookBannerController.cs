@@ -291,8 +291,14 @@ public sealed class FirstLookBannerController : IDisposable
         }
     }
 
-    /* Returns whether the fill went on screen. */
-    private bool ShowIfWanted(FirstLookSource source, bool spendsPass)
+    /*
+     * Returns whether the fill went on screen. Two flags, because they answer
+     * different questions: "ours" is whether this controller asked for the
+     * load, and "spendsPass" is whether it should re-time the cycle. They part
+     * company for a pass a Hide cancelled - the fill is still ours to bank and
+     * show, but the cooldown belongs to whatever the host has scheduled since.
+     */
+    private bool ShowIfWanted(FirstLookSource source, bool ours, bool spendsPass)
     {
         if (!_wantShown)
         {
@@ -300,13 +306,13 @@ public sealed class FirstLookBannerController : IDisposable
         }
 
         /*
-         * A fill from a pass legitimately replaces the ad the previous pass put
-         * up, so there is no _isShown check. A fill that is not part of a pass
-         * is different: letting AdMob's own refresh take the slot from CloudX
+         * A fill we asked for legitimately replaces the ad the previous pass
+         * put up, so there is no _isShown check. A fill nobody asked for is
+         * different: letting AdMob's own refresh take the slot from CloudX
          * would undo the source decision this pass made, so it only re-shows the
          * source that is already up.
          */
-        if (!spendsPass && _shownSource != null && _shownSource != source)
+        if (!ours && _shownSource != null && _shownSource != source)
         {
             return false;
         }
@@ -324,8 +330,8 @@ public sealed class FirstLookBannerController : IDisposable
      * Nothing is lost by forgetting it; the native view keeps the creative and
      * the next pass reloads that side anyway.
      */
-    private static bool KeepsUnspentFill(bool spendsPass, bool wentOnScreen) =>
-        spendsPass && !wentOnScreen;
+    private static bool KeepsUnspentFill(bool ours, bool wentOnScreen) =>
+        ours && !wentOnScreen;
 
     private void HideCloudX()
     {
@@ -387,14 +393,22 @@ public sealed class FirstLookBannerController : IDisposable
          * off, so in practice this is always true; the check keeps the two
          * sources reading the same way.
          */
-        var spendsPass = _isLoadingCloudX;
+        var ours = _isLoadingCloudX;
+
+        /*
+         * A fill for a pass a Hide cancelled is still worth banking and showing
+         * - it is an ad we paid a request for - but it must not raise PassSpent
+         * and reset the cooldown, which by now belongs to the show that came
+         * after the hide.
+         */
+        var spendsPass = ours && !_passCancelled;
 
         _isLoadingCloudX = false;
         _cloudXLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.CloudX);
 
-        var wentOnScreen = ShowIfWanted(FirstLookSource.CloudX, spendsPass);
-        _cloudXLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
+        var wentOnScreen = ShowIfWanted(FirstLookSource.CloudX, ours, spendsPass);
+        _cloudXLoaded = KeepsUnspentFill(ours, wentOnScreen);
     }
 
     private void CloudXOnLoadFailed(string adUnitId, CloudXError _)
@@ -504,7 +518,11 @@ public sealed class FirstLookBannerController : IDisposable
          * but it does not count as a pass, so the pending pass keeps its
          * original schedule.
          */
-        var spendsPass = _isLoadingAdMob;
+        var ours = _isLoadingAdMob;
+
+        /* Same as the CloudX leg: a cancelled pass banks and shows, but does
+         * not re-time the cycle. */
+        var spendsPass = ours && !_passCancelled;
 
         _isLoadingAdMob = false;
 
@@ -517,8 +535,8 @@ public sealed class FirstLookBannerController : IDisposable
         _adMobLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.AdMob);
 
-        var wentOnScreen = ShowIfWanted(FirstLookSource.AdMob, spendsPass);
-        _adMobLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
+        var wentOnScreen = ShowIfWanted(FirstLookSource.AdMob, ours, spendsPass);
+        _adMobLoaded = KeepsUnspentFill(ours, wentOnScreen);
     }
 
     private void DestroyAdMobAd()
