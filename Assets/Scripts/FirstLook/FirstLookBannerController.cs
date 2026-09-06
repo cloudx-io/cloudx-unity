@@ -82,11 +82,18 @@ public sealed class FirstLookBannerController : IDisposable
     private bool _isShown;
 
     /*
-     * Set by Hide, cleared by Show. Distinct from _wantShown, which is also
-     * false during the preload before the first Show - and the preload must
-     * still be allowed to reach the fallback, so it cannot be the gate here.
+     * Whether the pass currently in flight was cancelled by a Hide. It tracks
+     * the pass, not the slot: clearing it on Show would revive a pass the
+     * player just cancelled, so only the start of a new pass clears it. A
+     * hide-then-quick-show otherwise lets the old request's terminal callback
+     * land after the show and start the fallback at once, skipping the
+     * cooldown that show just restarted.
+     *
+     * _wantShown cannot do this job either, because it is also false during
+     * the preload before the first Show, and the preload has to be allowed to
+     * reach the fallback.
      */
-    private bool _hidden;
+    private bool _passCancelled;
     private bool _isDisposed;
 
     /*
@@ -150,6 +157,9 @@ public sealed class FirstLookBannerController : IDisposable
             return;
         }
 
+        /* A new pass starts here, so whatever a Hide cancelled is history. */
+        _passCancelled = false;
+
         if (!_cloudXAvailable)
         {
             LoadAdMobFallback();
@@ -181,7 +191,6 @@ public sealed class FirstLookBannerController : IDisposable
         }
 
         _wantShown = true;
-        _hidden = false;
 
         /*
          * An unspent fill wins; otherwise re-show whatever is already in a
@@ -206,7 +215,7 @@ public sealed class FirstLookBannerController : IDisposable
 
         _wantShown = false;
         _isShown = false;
-        _hidden = true;
+        _passCancelled = true;
 
         HideCloudX();
         HideAdMob();
@@ -387,12 +396,13 @@ public sealed class FirstLookBannerController : IDisposable
         _isLoadingCloudX = false;
 
         /*
-         * The player hid the slot while this CloudX load was still running.
-         * The pass is over: starting the fallback now would put a request on
-         * a view nobody can see, which is the one thing Hide has to stop.
-         * A show starts a fresh pass, and that one begins at CloudX again.
+         * A Hide cancelled this pass while the load was still running. Do not
+         * hand over to the fallback: the request would land on a slot the
+         * player dismissed, and if they have since shown it again, it would
+         * also jump the cooldown that show restarted. The next pass begins at
+         * CloudX, as every pass does.
          */
-        if (_hidden)
+        if (_passCancelled)
         {
             return;
         }
@@ -448,10 +458,17 @@ public sealed class FirstLookBannerController : IDisposable
         {
             _isLoadingAdMob = false;
 
-            if (!_isDisposed)
+            /*
+             * Same reason as the CloudX leg: a cancelled pass must not reach
+             * the host, or its retry would run against a dismissed slot - or
+             * jump the cooldown, if the player has shown the banner again.
+             */
+            if (_isDisposed || _passCancelled)
             {
-                AdLoadFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
+                return;
             }
+
+            AdLoadFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
         });
 
         _adMobBanner.OnAdClicked += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
