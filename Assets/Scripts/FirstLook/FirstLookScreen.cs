@@ -258,9 +258,13 @@ public class FirstLookScreen : MonoBehaviour
                 _ui.SetBannerButtonLabel("Show Banner");
             }
         };
-        _banner.AdLoadFailed += (source, message) => Log(
-            $"Banner load failed ({source}): {message}"
-            + (_banner.IsWanted ? "; retrying" : "; not retrying while hidden"));
+        /*
+         * Only a live pass reaches this: the controller drops the terminal
+         * failure of a pass a Hide cancelled, so there is no hidden-slot case
+         * to report here.
+         */
+        _banner.AdLoadFailed += (source, message) =>
+            Log($"Banner load failed ({source}): {message}; retrying");
         _banner.AdShown += source => _ui.SetBannerButtonLabel($"Hide Banner ({source})");
         _banner.AdHidden += () => _ui.SetBannerButtonLabel("Show Banner");
         _banner.ShowPending += () => _ui.SetBannerButtonLabel("Banner: loading...");

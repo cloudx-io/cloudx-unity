@@ -72,13 +72,6 @@ public sealed class FirstLookBannerCycle : MonoBehaviour
     public bool IsShown => _banner != null && _banner.IsShown;
 
     /*
-     * Whether the slot is meant to hold an ad. Read it from an AdLoadFailed
-     * handler to tell a failure that will be retried from one that will not,
-     * because the player hid the banner while the load was still running.
-     */
-    public bool IsWanted => _wanted;
-
-    /*
      * Creates the controller and preloads one pass, so an ad is ready the first
      * time the player asks for one. Call once, after CloudX has answered -
      * initialized, failed, or past a timeout of your own - passing whether it
@@ -143,7 +136,13 @@ public sealed class FirstLookBannerCycle : MonoBehaviour
     {
         AdLoadFailed?.Invoke(source, message);
 
-        /* Rule 3: a load that fails after the hide must not revive the slot. */
+        /*
+         * Rule 3: a load that fails after the hide must not revive the slot.
+         * FirstLookBannerController already drops the terminal failure of a
+         * cancelled pass, so nothing reaches this in practice. It stays because
+         * the rule is the host's to keep - drive that controller from your own
+         * component and this is the line that keeps it true.
+         */
         if (!_wanted)
         {
             return;
