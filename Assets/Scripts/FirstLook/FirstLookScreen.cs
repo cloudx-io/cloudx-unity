@@ -23,7 +23,9 @@ using UnityEngine;
  *
  * This screen is also the reference for the half of the banner contract the
  * controller cannot keep for you: ScheduleNextBannerPass starts the next pass a
- * cooldown after PassSpent, and ToggleBanner cancels it on hide.
+ * cooldown after PassSpent, ToggleBanner cancels it on hide, and the load-failure
+ * retry is gated on the banner still being wanted - a load already in flight at
+ * the hide fails afterwards, where CancelInvoke can no longer reach it.
  *
  * https://docs.cloudx.io/en/unity/integrations/first-look
  */
@@ -50,6 +52,13 @@ public class FirstLookScreen : MonoBehaviour
     private int _bannerRetries;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
+
+    /*
+     * Whether the banner slot should hold an ad at all. IsShown is not enough:
+     * it is also false during the preload before the first Show(), when a retry
+     * is still wanted.
+     */
+    private bool _bannerWanted = true;
 
     private static void Log(string message) => Debug.Log($"[{TAG}][FirstLook] {message}");
 
@@ -215,7 +224,7 @@ public class FirstLookScreen : MonoBehaviour
         }
 
         _interstitial = new FirstLookInterstitialController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
+            DemoConfig.InterstitialAdUnitId,
             FirstLookConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
         _interstitial.AdLoaded += source =>
@@ -245,7 +254,7 @@ public class FirstLookScreen : MonoBehaviour
         _interstitial.AdClicked += source => Log($"Interstitial clicked ({source})");
 
         _banner = new FirstLookBannerController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
+            DemoConfig.BannerAdUnitId,
             FirstLookConfig.AdMobBannerAdUnitId,
             cloudXAvailable);
         _banner.AdLoaded += source =>
@@ -259,6 +268,19 @@ public class FirstLookScreen : MonoBehaviour
         };
         _banner.AdLoadFailed += (source, message) =>
         {
+            /*
+             * A load already in flight when the player hides the banner still
+             * fails afterwards, and CancelInvoke cannot reach it - it is out on
+             * the network, not sitting in the invoke queue. Retrying then would
+             * put requests back on a slot that is off screen, and nothing would
+             * stop it. Show() starts the cycle again.
+             */
+            if (!_bannerWanted)
+            {
+                Log($"Banner load failed ({source}): {message}; not retrying while hidden");
+                return;
+            }
+
             var delay = NextRetryDelay(ref _bannerRetries);
             Log($"Banner load failed ({source}): {message}; retrying in {delay:0}s");
             Invoke(nameof(LoadBanner), delay);
@@ -298,12 +320,15 @@ public class FirstLookScreen : MonoBehaviour
     {
         if (_banner.IsShown)
         {
+            _bannerWanted = false;
             _banner.Hide();
             /* Nothing on screen, so the pass cycle stops until the next Show. */
             CancelInvoke(nameof(LoadBanner));
             _ui.SetBannerButtonLabel("Show Banner");
             return;
         }
+
+        _bannerWanted = true;
 
         /* AdShown updates the label once a source actually shows. */
         if (!_banner.Show())
