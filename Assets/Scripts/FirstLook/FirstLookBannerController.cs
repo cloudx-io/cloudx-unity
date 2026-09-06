@@ -5,10 +5,16 @@ using GoogleMobileAds.Common;
 
 /*
  * First Look banner: CloudX gets the first chance to fill, AdMob loads lazily
- * as the fallback only after CloudX fails. Copy this file and FirstLookSource.cs
- * into your project; it is the whole flow, top to bottom, with no base class to
- * bring along. Reading order: state, the Load/Show/Hide entry points, the pass
- * cycle, then each SDK's callbacks.
+ * as the fallback only after CloudX fails.
+ *
+ * This file decides which SDK fills a pass. It does not decide when the next
+ * pass starts, because it is a plain class with no clock. Copy three files:
+ * this one, FirstLookBannerCycle.cs for the timing, and FirstLookSource.cs for
+ * the enum every event reports. Taking this file alone leaves nothing driving
+ * the cycle, and the banner stops after its first pass.
+ *
+ * Reading order: state, the Load/Show/Hide entry points, the pass cycle, then
+ * each SDK's callbacks.
  *
  * A banner is not the interstitial with different method names. A fullscreen ad
  * is consumed by being shown, so the SDKs' own readiness answers go false and
@@ -19,15 +25,20 @@ using GoogleMobileAds.Common;
  * scene is destroyed and one CloudX no-fill hands the slot to the fallback for
  * the rest of the session.
  *
- * Two things the host has to do, or the cycle stalls:
+ * Two things the host has to do, or the cycle stalls. FirstLookBannerCycle
+ * does both; they are written out here for anyone driving this controller from
+ * their own component instead:
  *
  *   1. Start the next pass on PassSpent, after a cooldown of your choosing.
  *      Reloading immediately is a request loop, because the new fill renders
  *      into the visible view and spends the next pass at once.
  *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
- *      requesting. Show() starts the cycle again. Hide also ends the pass that
- *      is already running: a CloudX load still in flight will not hand over to
- *      the fallback once the slot is off screen.
+ *      requesting. Show() starts the cycle again.
+ *
+ * Hide also ends the pass already running, and that part is this controller's
+ * job rather than the host's: a CloudX load still in flight will not hand over
+ * to the fallback, and a later Show does not revive it. Only the start of the
+ * next pass does.
  *
  * Set Automatic refresh to Disabled on the AdMob ad unit you use as the
  * fallback. The Google Mobile Ads Unity plugin has no refresh API, so that
