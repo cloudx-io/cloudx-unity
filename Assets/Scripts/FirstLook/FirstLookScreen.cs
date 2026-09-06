@@ -16,16 +16,16 @@ using UnityEngine;
  * banner exactly, so adding them here would only repeat a pattern; the General
  * screen already shows the SDK calls for all four formats.
  *
- * The flow lives entirely in this folder, and each controller is one
- * self-contained file, so integrating a format means copying two files: that
- * controller and FirstLookSource.cs. AdScreenUi is demo-only layout and is kept
- * out on purpose; this screen hides the two buttons it does not use.
+ * The flow lives entirely in this folder. Integrating the interstitial means
+ * copying two files, FirstLookInterstitialController.cs and FirstLookSource.cs;
+ * the banner adds FirstLookBannerHud.cs for the clock. AdScreenUi is demo-only
+ * layout and is kept out on purpose; this screen hides the two buttons it does
+ * not use.
  *
- * This screen is also the reference for the half of the banner contract the
- * controller cannot keep for you: ScheduleNextBannerPass starts the next pass a
- * cooldown after PassSpent, ToggleBanner cancels it on hide, and the load-failure
- * retry is gated on the banner still being wanted - a load already in flight at
- * the hide fails afterwards, where CancelInvoke can no longer reach it.
+ * The banner needs a second half the controller cannot provide - a clock, to
+ * time the next pass and to stop requesting once the slot is hidden. That half
+ * is FirstLookBannerHud, kept in its own file so it can be copied alongside the
+ * controller; this screen only binds it to buttons and status text.
  *
  * https://docs.cloudx.io/en/unity/integrations/first-look
  */
@@ -36,29 +36,22 @@ public class FirstLookScreen : MonoBehaviour
     private const float InitializationUiTimeoutSeconds = 15f;
 
     /*
-     * Retry policy after a load or show failure: 2s, 4s, 8s ... capped, and
-     * reset once a load succeeds. A fixed short delay turns sustained no-fill
-     * into a tight request loop against the fallback network, which ad
-     * networks penalise.
+     * Interstitial retry policy after a load or show failure: 2s, 4s, 8s ...
+     * capped, and reset once a load succeeds. A fixed short delay turns
+     * sustained no-fill into a tight request loop against the fallback network,
+     * which ad networks penalise. The banner runs the same backoff inside
+     * FirstLookBannerHud, so that file stands alone.
      */
     private const float RetryBaseDelaySeconds = 2f;
     private const float RetryMaxDelaySeconds = 60f;
 
     private AdScreenUi _ui;
     private FirstLookInterstitialController _interstitial;
-    private FirstLookBannerController _banner;
+    private FirstLookBannerHud _banner;
     private bool _cloudXInitAnswered;
     private int _interstitialRetries;
-    private int _bannerRetries;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
-
-    /*
-     * Whether the banner slot should hold an ad at all. IsShown is not enough:
-     * it is also false during the preload before the first Show(), when a retry
-     * is still wanted.
-     */
-    private bool _bannerWanted = true;
 
     private static void Log(string message) => Debug.Log($"[{TAG}][FirstLook] {message}");
 
@@ -114,8 +107,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _interstitial?.Dispose();
         _interstitial = null;
-        _banner?.Dispose();
-        _banner = null;
+        /* _banner is a component on this GameObject; its OnDestroy disposes it. */
     }
 
     /*
@@ -253,44 +245,32 @@ public class FirstLookScreen : MonoBehaviour
         };
         _interstitial.AdClicked += source => Log($"Interstitial clicked ({source})");
 
-        _banner = new FirstLookBannerController(
-            DemoConfig.BannerAdUnitId,
-            FirstLookConfig.AdMobBannerAdUnitId,
-            cloudXAvailable);
+        /*
+         * The hud is added here rather than sitting in the scene because the ad
+         * unit ids are only settled once initialization has answered.
+         */
+        _banner = gameObject.AddComponent<FirstLookBannerHud>();
         _banner.AdLoaded += source =>
         {
-            _bannerRetries = 0;
             Log($"Banner loaded ({source})");
             if (!_banner.IsShown)
             {
                 _ui.SetBannerButtonLabel("Show Banner");
             }
         };
-        _banner.AdLoadFailed += (source, message) =>
-        {
-            /*
-             * A load already in flight when the player hides the banner still
-             * fails afterwards, and CancelInvoke cannot reach it - it is out on
-             * the network, not sitting in the invoke queue. Retrying then would
-             * put requests back on a slot that is off screen, and nothing would
-             * stop it. Show() starts the cycle again.
-             */
-            if (!_bannerWanted)
-            {
-                Log($"Banner load failed ({source}): {message}; not retrying while hidden");
-                return;
-            }
-
-            var delay = NextRetryDelay(ref _bannerRetries);
-            Log($"Banner load failed ({source}): {message}; retrying in {delay:0}s");
-            Invoke(nameof(LoadBanner), delay);
-        };
+        _banner.AdLoadFailed += (source, message) => Log(
+            $"Banner load failed ({source}): {message}"
+            + (_banner.IsWanted ? "; retrying" : "; not retrying while hidden"));
         _banner.AdShown += source => _ui.SetBannerButtonLabel($"Hide Banner ({source})");
-        _banner.PassSpent += ScheduleNextBannerPass;
+        _banner.AdHidden += () => _ui.SetBannerButtonLabel("Show Banner");
+        _banner.ShowPending += () => _ui.SetBannerButtonLabel("Banner: loading...");
         _banner.AdClicked += source => Log($"Banner clicked ({source})");
 
         LoadInterstitial();
-        LoadBanner();
+        _banner.Begin(
+            DemoConfig.BannerAdUnitId,
+            FirstLookConfig.AdMobBannerAdUnitId,
+            cloudXAvailable);
         _ui.SetActionsInteractable(true);
     }
 
@@ -318,38 +298,8 @@ public class FirstLookScreen : MonoBehaviour
 
     private void ToggleBanner()
     {
-        if (_banner.IsShown)
-        {
-            _bannerWanted = false;
-            _banner.Hide();
-            /* Nothing on screen, so the pass cycle stops until the next Show. */
-            CancelInvoke(nameof(LoadBanner));
-            _ui.SetBannerButtonLabel("Show Banner");
-            return;
-        }
-
-        _bannerWanted = true;
-
-        /* AdShown updates the label once a source actually shows. */
-        if (!_banner.Show())
-        {
-            _ui.SetBannerButtonLabel("Banner: loading...");
-            LoadBanner();
-        }
-    }
-
-    /*
-     * Banner only: putting one on screen spends its First Look pass, so the
-     * next pass is scheduled a cooldown later. Cancelling first collapses a
-     * pending backoff retry into this one - both end up calling LoadBanner, and
-     * two pending invokes would arbitrate the placement twice. Showing again
-     * after a Hide raises PassSpent too, which restarts the cooldown from that
-     * moment.
-     */
-    private void ScheduleNextBannerPass()
-    {
-        CancelInvoke(nameof(LoadBanner));
-        Invoke(nameof(LoadBanner), FirstLookConfig.PassCooldownSeconds);
+        /* The hud owns the cycle; the label follows from its events. */
+        _banner.Toggle();
     }
 
     private static float NextRetryDelay(ref int retries)
@@ -359,18 +309,10 @@ public class FirstLookScreen : MonoBehaviour
         return delay;
     }
 
-    /*
-     * Named methods so terminal failures can retry via Invoke(nameof(...)).
-     */
-
+    /* Named so terminal interstitial failures can retry via Invoke(nameof(...)). */
     private void LoadInterstitial()
     {
         _interstitial?.Load();
-    }
-
-    private void LoadBanner()
-    {
-        _banner?.Load();
     }
 
     /*
