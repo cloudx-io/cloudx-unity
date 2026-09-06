@@ -25,7 +25,9 @@ using GoogleMobileAds.Common;
  *      Reloading immediately is a request loop, because the new fill renders
  *      into the visible view and spends the next pass at once.
  *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
- *      requesting. Show() starts the cycle again.
+ *      requesting. Show() starts the cycle again. Hide also ends the pass that
+ *      is already running: a CloudX load still in flight will not hand over to
+ *      the fallback once the slot is off screen.
  *
  * Set Automatic refresh to Disabled on the AdMob ad unit you use as the
  * fallback. The Google Mobile Ads Unity plugin has no refresh API, so that
@@ -78,6 +80,13 @@ public sealed class FirstLookBannerController : IDisposable
     private bool _isLoadingAdMob;
     private bool _wantShown;
     private bool _isShown;
+
+    /*
+     * Set by Hide, cleared by Show. Distinct from _wantShown, which is also
+     * false during the preload before the first Show - and the preload must
+     * still be allowed to reach the fallback, so it cannot be the gate here.
+     */
+    private bool _hidden;
     private bool _isDisposed;
 
     /*
@@ -172,6 +181,7 @@ public sealed class FirstLookBannerController : IDisposable
         }
 
         _wantShown = true;
+        _hidden = false;
 
         /*
          * An unspent fill wins; otherwise re-show whatever is already in a
@@ -196,6 +206,7 @@ public sealed class FirstLookBannerController : IDisposable
 
         _wantShown = false;
         _isShown = false;
+        _hidden = true;
 
         HideCloudX();
         HideAdMob();
@@ -373,8 +384,20 @@ public sealed class FirstLookBannerController : IDisposable
             return;
         }
 
-        /* The one place the fallback is triggered: CloudX had its first look. */
         _isLoadingCloudX = false;
+
+        /*
+         * The player hid the slot while this CloudX load was still running.
+         * The pass is over: starting the fallback now would put a request on
+         * a view nobody can see, which is the one thing Hide has to stop.
+         * A show starts a fresh pass, and that one begins at CloudX again.
+         */
+        if (_hidden)
+        {
+            return;
+        }
+
+        /* The one place the fallback is triggered: CloudX had its first look. */
         LoadAdMobFallback();
     }
 
