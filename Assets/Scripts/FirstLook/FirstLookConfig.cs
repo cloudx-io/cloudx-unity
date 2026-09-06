@@ -7,8 +7,8 @@
  * AdMob console. The Unity plugin cannot control it, and a refreshing AdMob
  * banner would replace the ad that won the First Look pass.
  *
- * The banner pass cooldown is not here; it lives in FirstLookBannerHud, with
- * the cycle it paces.
+ * The banner pass cooldown is not here; it lives in FirstLookBannerCycle,
+ * which paces it.
  *
  * https://docs.cloudx.io/en/unity/integrations/first-look
  */

@@ -18,13 +18,13 @@ using UnityEngine;
  *
  * The flow lives entirely in this folder. Integrating the interstitial means
  * copying two files, FirstLookInterstitialController.cs and FirstLookSource.cs;
- * the banner adds FirstLookBannerHud.cs for the clock. AdScreenUi is demo-only
+ * the banner adds FirstLookBannerCycle.cs for the clock. AdScreenUi is demo-only
  * layout and is kept out on purpose; this screen hides the two buttons it does
  * not use.
  *
  * The banner needs a second half the controller cannot provide - a clock, to
  * time the next pass and to stop requesting once the slot is hidden. That half
- * is FirstLookBannerHud, kept in its own file so it can be copied alongside the
+ * is FirstLookBannerCycle, kept in its own file so it can be copied alongside the
  * controller; this screen only binds it to buttons and status text.
  *
  * https://docs.cloudx.io/en/unity/integrations/first-look
@@ -40,14 +40,14 @@ public class FirstLookScreen : MonoBehaviour
      * capped, and reset once a load succeeds. A fixed short delay turns
      * sustained no-fill into a tight request loop against the fallback network,
      * which ad networks penalise. The banner runs the same backoff inside
-     * FirstLookBannerHud, so that file stands alone.
+     * FirstLookBannerCycle, so that file stands alone.
      */
     private const float RetryBaseDelaySeconds = 2f;
     private const float RetryMaxDelaySeconds = 60f;
 
     private AdScreenUi _ui;
     private FirstLookInterstitialController _interstitial;
-    private FirstLookBannerHud _banner;
+    private FirstLookBannerCycle _banner;
     private bool _cloudXInitAnswered;
     private int _interstitialRetries;
     private string _cloudXStatus = "CloudX: Initializing";
@@ -246,10 +246,10 @@ public class FirstLookScreen : MonoBehaviour
         _interstitial.AdClicked += source => Log($"Interstitial clicked ({source})");
 
         /*
-         * The hud is added here rather than sitting in the scene because the ad
+         * The cycle is added here rather than sitting in the scene because the ad
          * unit ids are only settled once initialization has answered.
          */
-        _banner = gameObject.AddComponent<FirstLookBannerHud>();
+        _banner = gameObject.AddComponent<FirstLookBannerCycle>();
         _banner.AdLoaded += source =>
         {
             Log($"Banner loaded ({source})");
@@ -298,7 +298,7 @@ public class FirstLookScreen : MonoBehaviour
 
     private void ToggleBanner()
     {
-        /* The hud owns the cycle; the label follows from its events. */
+        /* The cycle owns the timing; the label follows from its events. */
         _banner.Toggle();
     }
 

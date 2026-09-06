@@ -15,8 +15,10 @@ using UnityEngine;
  *   2. Cancel that pending pass on Hide, so a hidden slot stops requesting.
  *   3. Do not retry a failed load while the banner is hidden. Cancelling is
  *      not enough on its own: a load already out on the network when the
- *      player hides still fails afterwards, long after CancelInvoke had
- *      anything to cancel, and its retry would start the requests up again.
+ *      player hides completes afterwards, long after CancelInvoke had
+ *      anything to cancel. A fill is harmless - it is banked for the next
+ *      Show. A failure is not, because its retry would start the requests
+ *      up again.
  *
  * Copy this file together with FirstLookBannerController.cs and
  * FirstLookSource.cs. In your own project the ad unit ids would come from
@@ -26,7 +28,7 @@ using UnityEngine;
  * Background and the reasoning behind each rule:
  * https://docs.cloudx.io/en/unity/integrations/first-look
  */
-public sealed class FirstLookBannerHud : MonoBehaviour
+public sealed class FirstLookBannerCycle : MonoBehaviour
 {
     /*
      * How long a displayed banner stays up before the next First Look pass
