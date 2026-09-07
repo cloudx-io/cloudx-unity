@@ -124,6 +124,8 @@ The status text names which SDK won, so you can see the pattern working:
 </p>
 
 Left: CloudX filled. Right: the same button after CloudX no-filled, showing Google's test creative.
+To see the fallback yourself, point the CloudX ad unit ids in `DemoConfig.cs` at a string that is not
+in your dashboard, so every CloudX load fails and AdMob has to serve.
 
 Everything the flow needs lives in `Assets/Scripts/FirstLook`, and none of it calls into the General
 screen:
@@ -131,19 +133,18 @@ screen:
 | File | Role |
 | --- | --- |
 | `FirstLookInterstitialController.cs` | The whole interstitial flow, self-contained. |
-| `FirstLookBannerController.cs` | The whole banner flow, self-contained, including the pass cycle. |
+| `FirstLookBannerController.cs` | Which SDK fills a banner pass, self-contained. |
+| `FirstLookBannerCycle.cs` | When the next pass starts: the clock the controller has no way to keep. |
 | `FirstLookSource.cs` | The `CloudX` / `AdMob` enum every event reports. |
-| `FirstLookConfig.cs` | AdMob ad unit ids, the banner pass cooldown, and the fallback test switch below. |
-| `FirstLookScreen.cs` | Initializes both SDKs, wires the controllers to the buttons. |
+| `FirstLookConfig.cs` | The AdMob fallback ad unit ids. |
+| `FirstLookScreen.cs` | Initializes both SDKs, wires the controller and the cycle to the buttons. |
 
-**To integrate one format, copy two files:** that format's controller and `FirstLookSource.cs`. Each
-controller is one file you can read top to bottom - state, the entry points, then each SDK's
+**To integrate the interstitial, copy two files:** `FirstLookInterstitialController.cs` and
+`FirstLookSource.cs`. The banner adds a third, `FirstLookBannerCycle.cs`, because a plain class has no
+clock. Each is one file you can read top to bottom - state, the entry points, then each SDK's
 callbacks - with no base class to chase. The two controllers repeat about fifty lines of ad-unit and
 dispose bookkeeping between them; that is deliberate, so neither file drags a shared base along into
 your project.
-
-To see the fallback path yourself, set `ForceCloudXNoFill = true` in `FirstLookConfig.cs` and rebuild.
-It points CloudX at an unknown ad unit, so every CloudX load fails and AdMob serves instead.
 
 The banner toggles Show/Hide and the button label names the SDK that filled (e.g.
 `Hide Banner (CloudX)`). It sits at the top in both orientations.
@@ -156,8 +157,8 @@ A banner is not consumed the way a fullscreen ad is, so it needs one thing the i
 One pass is one ad opportunity: CloudX is asked first, AdMob only if CloudX fails, and the winner goes
 on screen. Putting an ad on screen **spends** the pass - CloudX inline ads report only load and click,
 and a load into a view that is already visible renders straight away, so that is the one moment the
-code can treat as "this fill has been used". The screen then schedules the next pass
-`FirstLookConfig.PassCooldownSeconds` later (30 s by default), and that pass starts at CloudX again.
+code can treat as "this fill has been used". `FirstLookBannerCycle` then schedules the next pass
+`PassCooldownSeconds` later (30 s by default), and that pass starts at CloudX again.
 
 Without the cycle the first fill would latch: after one CloudX no-fill the AdMob fallback would own
 the placement until the scene was destroyed, and CloudX would never get another first look.
@@ -167,10 +168,13 @@ Three details worth copying as they are:
 - **Reloading is in place, not a recreate** - `LoadBanner` on the existing view, allowed because
   refresh was stopped for that ad unit - so a visible ad is replaced only once the new one has filled,
   and the slot never blanks.
-- **The cycle only turns while an ad is on screen.** Hiding cancels the pending pass, so a hidden slot
-  never keeps requesting in the background, and showing it again puts the same ad back up and restarts
-  the cooldown from that tap. The screen still preloads once before the first tap, so an ad is ready
-  when the user asks for it.
+- **The cycle only turns while an ad is on screen.** Hiding cancels the pending pass, so a hidden
+  slot never keeps requesting in the background; showing it again puts the same ad back up and
+  restarts the cooldown from that tap. Cancelling alone is not enough - a request already out on the
+  network completes after the hide, long after `CancelInvoke` had anything to cancel. A fill is
+  harmless, because it is banked for the next show; a failure is not, because its retry would start
+  the requests up again, so the cycle also tracks whether the banner is still wanted. It still
+  preloads once before the first tap, so an ad is ready when the user asks for it.
 - **An ad the AdMob console refreshed on its own does not count as a pass.** Only a fill the
   controller asked for spends one, so an AdMob unit that still has Automatic refresh enabled cannot
   keep postponing CloudX's next first look - which it otherwise would, on every refresh. The demo's

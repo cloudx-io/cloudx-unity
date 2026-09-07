@@ -5,10 +5,16 @@ using GoogleMobileAds.Common;
 
 /*
  * First Look banner: CloudX gets the first chance to fill, AdMob loads lazily
- * as the fallback only after CloudX fails. Copy this file and FirstLookSource.cs
- * into your project; it is the whole flow, top to bottom, with no base class to
- * bring along. Reading order: state, the Load/Show/Hide entry points, the pass
- * cycle, then each SDK's callbacks.
+ * as the fallback only after CloudX fails.
+ *
+ * This file decides which SDK fills a pass. It does not decide when the next
+ * pass starts, because it is a plain class with no clock. Copy three files:
+ * this one, FirstLookBannerCycle.cs for the timing, and FirstLookSource.cs for
+ * the enum every event reports. Taking this file alone leaves nothing driving
+ * the cycle, and the banner stops after its first pass.
+ *
+ * Reading order: state, the Load/Show/Hide entry points, the pass cycle, then
+ * each SDK's callbacks.
  *
  * A banner is not the interstitial with different method names. A fullscreen ad
  * is consumed by being shown, so the SDKs' own readiness answers go false and
@@ -19,13 +25,27 @@ using GoogleMobileAds.Common;
  * scene is destroyed and one CloudX no-fill hands the slot to the fallback for
  * the rest of the session.
  *
- * Two things the host has to do, or the cycle stalls:
+ * Three things the host has to do, or the cycle stalls or loops.
+ * FirstLookBannerCycle does all three; they are written out here for anyone
+ * driving this controller from their own component instead:
  *
  *   1. Start the next pass on PassSpent, after a cooldown of your choosing.
  *      Reloading immediately is a request loop, because the new fill renders
  *      into the visible view and spends the next pass at once.
  *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
  *      requesting. Show() starts the cycle again.
+ *   3. Do not call Load() on a slot the player dismissed. Load() means the
+ *      slot is wanted, so it lifts the cancellation below - including on a
+ *      pass still out on the network - and a load asked for after a Hide puts
+ *      the requests back with nothing to stop them. The preload before the
+ *      first Show is a different thing and is fine: nothing has been
+ *      dismissed yet.
+ *
+ * Hide also ends the pass already running, and that part is this controller's
+ * job rather than the host's: a CloudX load still in flight will not hand over
+ * to the fallback, and a later Show does not revive it. Only the next Load
+ * does - including one the in-flight guard drops, so a host tick that produces
+ * no callback cannot leave the cycle with nothing left to schedule from.
  *
  * Set Automatic refresh to Disabled on the AdMob ad unit you use as the
  * fallback. The Google Mobile Ads Unity plugin has no refresh API, so that
@@ -78,6 +98,20 @@ public sealed class FirstLookBannerController : IDisposable
     private bool _isLoadingAdMob;
     private bool _wantShown;
     private bool _isShown;
+
+    /*
+     * Whether the pass currently in flight was cancelled by a Hide. It tracks
+     * the pass, not the slot: clearing it on Show would revive a pass the
+     * player just cancelled, so only Load clears it. A hide-then-quick-show
+     * otherwise lets the old request's terminal callback land after the show
+     * and start the fallback at once, skipping the cooldown that show just
+     * restarted.
+     *
+     * _wantShown cannot do this job either, because it is also false during
+     * the preload before the first Show, and the preload has to be allowed to
+     * reach the fallback.
+     */
+    private bool _passCancelled;
     private bool _isDisposed;
 
     /*
@@ -136,7 +170,23 @@ public sealed class FirstLookBannerController : IDisposable
      */
     public void Load()
     {
-        if (_isDisposed || _isLoadingCloudX || _isLoadingAdMob || ReadySource != null)
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        /*
+         * Whatever a Hide cancelled is history. This has to happen before the
+         * guard below rather than after it. A load is only ever asked for on a
+         * slot that is wanted, so it supersedes the cancellation even when the
+         * cancelled pass is still out on the network and the guard drops this
+         * call: leaving the flag set there would suppress that pass's terminal
+         * callback as well, and the host would get neither the PassSpent nor
+         * the failure it needs to schedule anything after it.
+         */
+        _passCancelled = false;
+
+        if (_isLoadingCloudX || _isLoadingAdMob || ReadySource != null)
         {
             return;
         }
@@ -196,6 +246,7 @@ public sealed class FirstLookBannerController : IDisposable
 
         _wantShown = false;
         _isShown = false;
+        _passCancelled = true;
 
         HideCloudX();
         HideAdMob();
@@ -260,8 +311,14 @@ public sealed class FirstLookBannerController : IDisposable
         }
     }
 
-    /* Returns whether the fill went on screen. */
-    private bool ShowIfWanted(FirstLookSource source, bool spendsPass)
+    /*
+     * Returns whether the fill went on screen. Two flags, because they answer
+     * different questions: "ours" is whether this controller asked for the
+     * load, and "spendsPass" is whether it should re-time the cycle. They part
+     * company for a pass a Hide cancelled - the fill is still ours to bank and
+     * show, but the cooldown belongs to whatever the host has scheduled since.
+     */
+    private bool ShowIfWanted(FirstLookSource source, bool ours, bool spendsPass)
     {
         if (!_wantShown)
         {
@@ -269,13 +326,13 @@ public sealed class FirstLookBannerController : IDisposable
         }
 
         /*
-         * A fill from a pass legitimately replaces the ad the previous pass put
-         * up, so there is no _isShown check. A fill that is not part of a pass
-         * is different: letting AdMob's own refresh take the slot from CloudX
+         * A fill we asked for legitimately replaces the ad the previous pass
+         * put up, so there is no _isShown check. A fill nobody asked for is
+         * different: letting AdMob's own refresh take the slot from CloudX
          * would undo the source decision this pass made, so it only re-shows the
          * source that is already up.
          */
-        if (!spendsPass && _shownSource != null && _shownSource != source)
+        if (!ours && _shownSource != null && _shownSource != source)
         {
             return false;
         }
@@ -293,8 +350,8 @@ public sealed class FirstLookBannerController : IDisposable
      * Nothing is lost by forgetting it; the native view keeps the creative and
      * the next pass reloads that side anyway.
      */
-    private static bool KeepsUnspentFill(bool spendsPass, bool wentOnScreen) =>
-        spendsPass && !wentOnScreen;
+    private static bool KeepsUnspentFill(bool ours, bool wentOnScreen) =>
+        ours && !wentOnScreen;
 
     private void HideCloudX()
     {
@@ -356,14 +413,22 @@ public sealed class FirstLookBannerController : IDisposable
          * off, so in practice this is always true; the check keeps the two
          * sources reading the same way.
          */
-        var spendsPass = _isLoadingCloudX;
+        var ours = _isLoadingCloudX;
+
+        /*
+         * A fill for a pass a Hide cancelled is still worth banking and showing
+         * - it is an ad we paid a request for - but it must not raise PassSpent
+         * and reset the cooldown, which by now belongs to the show that came
+         * after the hide.
+         */
+        var spendsPass = ours && !_passCancelled;
 
         _isLoadingCloudX = false;
         _cloudXLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.CloudX);
 
-        var wentOnScreen = ShowIfWanted(FirstLookSource.CloudX, spendsPass);
-        _cloudXLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
+        var wentOnScreen = ShowIfWanted(FirstLookSource.CloudX, ours, spendsPass);
+        _cloudXLoaded = KeepsUnspentFill(ours, wentOnScreen);
     }
 
     private void CloudXOnLoadFailed(string adUnitId, CloudXError _)
@@ -373,8 +438,21 @@ public sealed class FirstLookBannerController : IDisposable
             return;
         }
 
-        /* The one place the fallback is triggered: CloudX had its first look. */
         _isLoadingCloudX = false;
+
+        /*
+         * A Hide cancelled this pass while the load was still running. Do not
+         * hand over to the fallback: the request would land on a slot the
+         * player dismissed, and if they have since shown it again, it would
+         * also jump the cooldown that show restarted. The next pass begins at
+         * CloudX, as every pass does.
+         */
+        if (_passCancelled)
+        {
+            return;
+        }
+
+        /* The one place the fallback is triggered: CloudX had its first look. */
         LoadAdMobFallback();
     }
 
@@ -425,10 +503,17 @@ public sealed class FirstLookBannerController : IDisposable
         {
             _isLoadingAdMob = false;
 
-            if (!_isDisposed)
+            /*
+             * Same reason as the CloudX leg: a cancelled pass must not reach
+             * the host, or its retry would run against a dismissed slot - or
+             * jump the cooldown, if the player has shown the banner again.
+             */
+            if (_isDisposed || _passCancelled)
             {
-                AdLoadFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
+                return;
             }
+
+            AdLoadFailed?.Invoke(FirstLookSource.AdMob, error.GetMessage());
         });
 
         _adMobBanner.OnAdClicked += () => MobileAdsEventExecutor.ExecuteInUpdate(() =>
@@ -453,7 +538,13 @@ public sealed class FirstLookBannerController : IDisposable
          * but it does not count as a pass, so the pending pass keeps its
          * original schedule.
          */
-        var spendsPass = _isLoadingAdMob;
+        var ours = _isLoadingAdMob;
+
+        /*
+         * Same as the CloudX leg: a cancelled pass banks and shows, but does
+         * not re-time the cycle.
+         */
+        var spendsPass = ours && !_passCancelled;
 
         _isLoadingAdMob = false;
 
@@ -466,8 +557,8 @@ public sealed class FirstLookBannerController : IDisposable
         _adMobLoaded = true;
         AdLoaded?.Invoke(FirstLookSource.AdMob);
 
-        var wentOnScreen = ShowIfWanted(FirstLookSource.AdMob, spendsPass);
-        _adMobLoaded = KeepsUnspentFill(spendsPass, wentOnScreen);
+        var wentOnScreen = ShowIfWanted(FirstLookSource.AdMob, ours, spendsPass);
+        _adMobLoaded = KeepsUnspentFill(ours, wentOnScreen);
     }
 
     private void DestroyAdMobAd()
