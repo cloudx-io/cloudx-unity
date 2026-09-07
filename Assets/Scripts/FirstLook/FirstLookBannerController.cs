@@ -25,20 +25,25 @@ using GoogleMobileAds.Common;
  * scene is destroyed and one CloudX no-fill hands the slot to the fallback for
  * the rest of the session.
  *
- * Two things the host has to do, or the cycle stalls. FirstLookBannerCycle
- * does both; they are written out here for anyone driving this controller from
- * their own component instead:
+ * Three things the host has to do, or the cycle stalls or loops.
+ * FirstLookBannerCycle does all three; they are written out here for anyone
+ * driving this controller from their own component instead:
  *
  *   1. Start the next pass on PassSpent, after a cooldown of your choosing.
  *      Reloading immediately is a request loop, because the new fill renders
  *      into the visible view and spends the next pass at once.
  *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
  *      requesting. Show() starts the cycle again.
+ *   3. Do not call Load() while the slot is hidden. Load() means the slot is
+ *      wanted, so it lifts the cancellation below - including on a pass still
+ *      out on the network - and a load asked for on a dismissed slot puts the
+ *      requests back with nothing to stop them.
  *
  * Hide also ends the pass already running, and that part is this controller's
  * job rather than the host's: a CloudX load still in flight will not hand over
- * to the fallback, and a later Show does not revive it. Only the start of the
- * next pass does.
+ * to the fallback, and a later Show does not revive it. Only the next Load
+ * does - including one the in-flight guard drops, so a host tick that produces
+ * no callback cannot leave the cycle with nothing left to schedule from.
  *
  * Set Automatic refresh to Disabled on the AdMob ad unit you use as the
  * fallback. The Google Mobile Ads Unity plugin has no refresh API, so that
@@ -95,10 +100,10 @@ public sealed class FirstLookBannerController : IDisposable
     /*
      * Whether the pass currently in flight was cancelled by a Hide. It tracks
      * the pass, not the slot: clearing it on Show would revive a pass the
-     * player just cancelled, so only the start of a new pass clears it. A
-     * hide-then-quick-show otherwise lets the old request's terminal callback
-     * land after the show and start the fallback at once, skipping the
-     * cooldown that show just restarted.
+     * player just cancelled, so only Load clears it. A hide-then-quick-show
+     * otherwise lets the old request's terminal callback land after the show
+     * and start the fallback at once, skipping the cooldown that show just
+     * restarted.
      *
      * _wantShown cannot do this job either, because it is also false during
      * the preload before the first Show, and the preload has to be allowed to
@@ -163,13 +168,26 @@ public sealed class FirstLookBannerController : IDisposable
      */
     public void Load()
     {
-        if (_isDisposed || _isLoadingCloudX || _isLoadingAdMob || ReadySource != null)
+        if (_isDisposed)
         {
             return;
         }
 
-        /* A new pass starts here, so whatever a Hide cancelled is history. */
+        /*
+         * Whatever a Hide cancelled is history. This has to happen before the
+         * guard below rather than after it. A load is only ever asked for on a
+         * slot that is wanted, so it supersedes the cancellation even when the
+         * cancelled pass is still out on the network and the guard drops this
+         * call: leaving the flag set there would suppress that pass's terminal
+         * callback as well, and the host would get neither the PassSpent nor
+         * the failure it needs to schedule anything after it.
+         */
         _passCancelled = false;
+
+        if (_isLoadingCloudX || _isLoadingAdMob || ReadySource != null)
+        {
+            return;
+        }
 
         if (!_cloudXAvailable)
         {
@@ -520,8 +538,10 @@ public sealed class FirstLookBannerController : IDisposable
          */
         var ours = _isLoadingAdMob;
 
-        /* Same as the CloudX leg: a cancelled pass banks and shows, but does
-         * not re-time the cycle. */
+        /*
+         * Same as the CloudX leg: a cancelled pass banks and shows, but does
+         * not re-time the cycle.
+         */
         var spendsPass = ours && !_passCancelled;
 
         _isLoadingAdMob = false;

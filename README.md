@@ -168,14 +168,13 @@ Three details worth copying as they are:
 - **Reloading is in place, not a recreate** - `LoadBanner` on the existing view, allowed because
   refresh was stopped for that ad unit - so a visible ad is replaced only once the new one has filled,
   and the slot never blanks.
-- **The cycle only turns while an ad is on screen.** Hiding cancels the pending pass and stops the
-  cycle retrying a load that was already in flight, so a hidden slot never keeps requesting in the
-  background; showing it again puts the same ad back up and restarts the cooldown from that tap.
-  Cancelling alone is not enough - a request already out on the network completes after the hide,
-  long after `CancelInvoke` had anything to cancel. A fill is harmless, because it is banked for the
-  next show; a failure is not, because its retry would start the requests up again. That is why the
-  cycle also tracks whether the banner is still wanted. It still preloads once before the first tap, so an ad is ready when the user asks for
-  it.
+- **The cycle only turns while an ad is on screen.** Hiding cancels the pending pass, so a hidden
+  slot never keeps requesting in the background; showing it again puts the same ad back up and
+  restarts the cooldown from that tap. Cancelling alone is not enough - a request already out on the
+  network completes after the hide, long after `CancelInvoke` had anything to cancel. A fill is
+  harmless, because it is banked for the next show; a failure is not, because its retry would start
+  the requests up again, so the cycle also tracks whether the banner is still wanted. It still
+  preloads once before the first tap, so an ad is ready when the user asks for it.
 - **An ad the AdMob console refreshed on its own does not count as a pass.** Only a fill the
   controller asked for spends one, so an AdMob unit that still has Automatic refresh enabled cannot
   keep postponing CloudX's next first look - which it otherwise would, on every refresh. The demo's
