@@ -34,10 +34,12 @@ using GoogleMobileAds.Common;
  *      into the visible view and spends the next pass at once.
  *   2. Cancel that pending pass when it calls Hide(), or a hidden slot keeps
  *      requesting. Show() starts the cycle again.
- *   3. Do not call Load() while the slot is hidden. Load() means the slot is
- *      wanted, so it lifts the cancellation below - including on a pass still
- *      out on the network - and a load asked for on a dismissed slot puts the
- *      requests back with nothing to stop them.
+ *   3. Do not call Load() on a slot the player dismissed. Load() means the
+ *      slot is wanted, so it lifts the cancellation below - including on a
+ *      pass still out on the network - and a load asked for after a Hide puts
+ *      the requests back with nothing to stop them. The preload before the
+ *      first Show is a different thing and is fine: nothing has been
+ *      dismissed yet.
  *
  * Hide also ends the pass already running, and that part is this controller's
  * job rather than the host's: a CloudX load still in flight will not hand over
