@@ -382,6 +382,12 @@ public sealed class FirstLookBannerController : IDisposable
          * native layer registers the ad unit as refresh-disabled even with no
          * view yet, then creates the view with refresh already off, so no timer
          * ever runs. (Destroy clears that registration, hence this order.)
+         *
+         * The ad unit can also be shipped refresh-off from the CloudX
+         * dashboard, which sends the SDK a per-unit flag at init. Keep this
+         * call anyway: it is what makes the cycle independent of the unit's
+         * configuration, and on a unit that already has refresh off it does
+         * nothing.
          */
         CloudXSdk.StopBannerAutoRefresh(_cloudXAdUnitId);
 
