@@ -75,6 +75,16 @@ public class GeneralScreen : MonoBehaviour
          */
         yield return DemoAppTrackingiOS.EnsureRequested();
 
+        /*
+         * Read the advertising ID once tracking has been answered, and log it in full.
+         * This is the value that has to be on the dashboard's test-device list for the
+         * device to serve test ads, and it is worth logging even when tracking was
+         * declined: a zeroed ID is the specific symptom that looks like a wrong
+         * dashboard entry rather than a consent problem.
+         */
+        yield return DemoAdvertisingId.Resolve();
+        Log($"Advertising ID: {DemoAdvertisingId.Describe()}");
+
         if (!DemoAppTrackingiOS.IsUsable(DemoAppTrackingiOS.Status))
         {
             /*
@@ -199,7 +209,15 @@ public class GeneralScreen : MonoBehaviour
     {
         Log("CloudX SDK initialized successfully");
         _initAnswered = true;
-        _ui.SetInitializationStatus("Status: Initialized");
+        /*
+         * Carry the advertising-ID verdict on the status line. A zeroed ID does not stop
+         * initialization -- it stops the device from ever matching the dashboard's
+         * test-device list -- so this is the only place the demo can flag it before the
+         * tester concludes their ad units are wrong.
+         */
+        var adId = DemoAdvertisingId.ShortStatus();
+        _ui.SetInitializationStatus(
+            string.IsNullOrEmpty(adId) ? "Status: Initialized" : $"Status: Initialized - {adId}");
         _ui.SetActionsInteractable(true);
 
         InitializeBannerAds();

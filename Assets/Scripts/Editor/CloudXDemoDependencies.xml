@@ -7,6 +7,15 @@
             <repository>https://artifact.bytedance.com/repository/pangle</repository>
             <repository>https://artifact.taurusx.com/artifactory/taurusx-sdk/</repository>
         </repositories>
+        <!--
+            Not an adapter. DemoAdvertisingId reads the GAID through
+            AdvertisingIdClient to report test-device eligibility, and this is the
+            library that class lives in. It already arrives transitively via
+            play-services-ads, but that comes from the Google Mobile Ads plugin, which
+            only the First Look flow needs - so declare it rather than depend on it.
+        -->
+        <androidPackage spec="com.google.android.gms:play-services-ads-identifier:18.2.0"/>
+
         <!-- CloudX Adapters -->
         <androidPackage spec="io.cloudx:adapter-meta:6.22.0.0"/>
         <androidPackage spec="io.cloudx:adapter-vungle:7.7.7.0"/>
