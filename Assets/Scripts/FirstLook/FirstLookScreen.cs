@@ -7,14 +7,27 @@ using UnityEngine;
 
 /*
  * First Look demo entry point and integration template: CloudX gets the first
- * chance to fill each placement and AdMob is the lazy fallback. The flow lives
- * entirely in this folder (screen + a shared controller base + one controller
- * per format) so it can be copied into a publisher app as-is; AdScreenUi is
- * demo-only layout and is kept out on purpose. Covers all four formats -
- * interstitial, rewarded, banner and MREC. Banner and MREC keep CloudX
- * auto-refresh off (it is opt-out) so a background reload never overrides the
- * First Look source decision; GeneralScreen restarts refresh on focus, this
- * screen deliberately does not.
+ * chance to fill each placement and AdMob is the lazy fallback.
+ *
+ * Two formats, deliberately: an interstitial and a banner. They are the two
+ * shapes the rule has to handle - a fullscreen ad that is consumed by being
+ * shown, and an inline ad that stays on screen and therefore needs an explicit
+ * pass cycle. Rewarded follows the interstitial exactly and MREC follows the
+ * banner exactly, so adding them here would only repeat a pattern; the General
+ * screen already shows the SDK calls for all four formats.
+ *
+ * The flow lives entirely in this folder. Integrating the interstitial means
+ * copying two files, FirstLookInterstitialController.cs and FirstLookSource.cs;
+ * the banner adds FirstLookBannerCycle.cs for the clock. AdScreenUi is demo-only
+ * layout and is kept out on purpose; this screen hides the two buttons it does
+ * not use.
+ *
+ * The banner needs a second half the controller cannot provide - a clock, to
+ * time the next pass and to stop requesting once the slot is hidden. That half
+ * is FirstLookBannerCycle, kept in its own file so it can be copied alongside the
+ * controller; this screen only binds it to buttons and status text.
+ *
+ * https://docs.cloudx.io/en/unity/integrations/first-look
  */
 [RequireComponent(typeof(AdScreenUi))]
 public class FirstLookScreen : MonoBehaviour
@@ -23,24 +36,20 @@ public class FirstLookScreen : MonoBehaviour
     private const float InitializationUiTimeoutSeconds = 15f;
 
     /*
-     * Retry policy after a load or show failure: 2s, 4s, 8s ... capped, and
-     * reset once a load succeeds. A fixed short delay turns sustained no-fill
-     * into a tight request loop against the fallback network, which ad
-     * networks penalise.
+     * Interstitial retry policy after a load or show failure: 2s, 4s, 8s ...
+     * capped, and reset once a load succeeds. A fixed short delay turns
+     * sustained no-fill into a tight request loop against the fallback network,
+     * which ad networks penalise. The banner runs the same backoff inside
+     * FirstLookBannerCycle, so that file stands alone.
      */
     private const float RetryBaseDelaySeconds = 2f;
     private const float RetryMaxDelaySeconds = 60f;
 
     private AdScreenUi _ui;
     private FirstLookInterstitialController _interstitial;
-    private FirstLookRewardedController _rewarded;
-    private FirstLookBannerController _banner;
-    private FirstLookMrecController _mrec;
+    private FirstLookBannerCycle _banner;
     private bool _cloudXInitAnswered;
     private int _interstitialRetries;
-    private int _rewardedRetries;
-    private int _bannerRetries;
-    private int _mrecRetries;
     private string _cloudXStatus = "CloudX: Initializing";
     private string _adMobStatus = "AdMob: Initializing";
 
@@ -58,12 +67,16 @@ public class FirstLookScreen : MonoBehaviour
         _ui.Bind(new AdScreenUi.Actions
         {
             ShowBanner = ToggleBanner,
-            ToggleMrec = ToggleMrec,
             ShowInterstitial = ShowInterstitial,
-            ShowRewarded = ShowRewarded,
+            /* This screen covers interstitial and banner only. */
+            ToggleMrec = () => { },
+            ShowRewarded = () => { },
             /* The banner stays at the top in both orientations, so nothing to reflow. */
             OnOrientationChanged = _ => { },
         });
+        _ui.SetButtonVisible(_ui.showMrecButton, false);
+        _ui.SetButtonVisible(_ui.showRewardedButton, false);
+        _ui.SetRewardedStatus(string.Empty);
         _ui.SetActionsInteractable(false);
 #if UNITY_IOS && !UNITY_EDITOR
         PublishInitializationStatus("Requesting tracking permission");
@@ -94,12 +107,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _interstitial?.Dispose();
         _interstitial = null;
-        _rewarded?.Dispose();
-        _rewarded = null;
-        _banner?.Dispose();
-        _banner = null;
-        _mrec?.Dispose();
-        _mrec = null;
+        /* _banner is a component on this GameObject; its OnDestroy disposes it. */
     }
 
     /*
@@ -148,7 +156,7 @@ public class FirstLookScreen : MonoBehaviour
     {
         _cloudXInitAnswered = true;
 
-        if (_interstitial != null || _rewarded != null)
+        if (_interstitial != null)
         {
             /*
              * The watchdog already gave up on CloudX and built AdMob-only
@@ -202,13 +210,13 @@ public class FirstLookScreen : MonoBehaviour
 
     private void CreateControllers(bool cloudXAvailable)
     {
-        if (_interstitial != null || _rewarded != null)
+        if (_interstitial != null)
         {
             return;
         }
 
         _interstitial = new FirstLookInterstitialController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.InterstitialAdUnitId),
+            DemoConfig.InterstitialAdUnitId,
             DemoConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
         _interstitial.AdLoaded += source =>
@@ -218,14 +226,14 @@ public class FirstLookScreen : MonoBehaviour
         };
         _interstitial.AdLoadFailed += (source, message) =>
         {
-            var delay = NextRetryDelay(ref _interstitialRetries);
+            var delay = NextInterstitialRetryDelay();
             SetInterstitialStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
         _interstitial.AdShown += source => SetInterstitialStatus($"Showing ({source})");
         _interstitial.AdShowFailed += (source, message) =>
         {
-            var delay = NextRetryDelay(ref _interstitialRetries);
+            var delay = NextInterstitialRetryDelay();
             SetInterstitialStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
             Invoke(nameof(LoadInterstitial), delay);
         };
@@ -237,88 +245,36 @@ public class FirstLookScreen : MonoBehaviour
         };
         _interstitial.AdClicked += source => Log($"Interstitial clicked ({source})");
 
-        _rewarded = new FirstLookRewardedController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.RewardedAdUnitId),
-            DemoConfig.AdMobRewardedAdUnitId,
-            cloudXAvailable);
-        _rewarded.AdLoaded += source =>
-        {
-            _rewardedRetries = 0;
-            SetRewardedStatus($"Loaded ({source})");
-        };
-        _rewarded.AdLoadFailed += (source, message) =>
-        {
-            var delay = NextRetryDelay(ref _rewardedRetries);
-            SetRewardedStatus($"Load failed ({source}): {message}\nRetrying in {delay:0}s...");
-            Invoke(nameof(LoadRewarded), delay);
-        };
-        _rewarded.AdShown += source => SetRewardedStatus($"Showing ({source})");
-        _rewarded.AdShowFailed += (source, message) =>
-        {
-            var delay = NextRetryDelay(ref _rewardedRetries);
-            SetRewardedStatus($"Show failed ({source}): {message}\nRetrying in {delay:0}s...");
-            Invoke(nameof(LoadRewarded), delay);
-        };
-        _rewarded.AdClosed += source =>
-        {
-            SetRewardedStatus($"Closed ({source})");
-            LoadRewarded();
-        };
-        _rewarded.AdClicked += source => Log($"Rewarded clicked ({source})");
-        _rewarded.RewardEarned += (source, reward) =>
-        {
-            Log($"Reward earned ({source}): {reward}");
-            SetRewardedStatus($"Reward: {reward} ({source})");
-        };
-
-        _banner = new FirstLookBannerController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.BannerAdUnitId),
-            DemoConfig.AdMobBannerAdUnitId,
-            cloudXAvailable);
+        /*
+         * The cycle is added here rather than sitting in the scene because the ad
+         * unit ids are only settled once initialization has answered.
+         */
+        _banner = gameObject.AddComponent<FirstLookBannerCycle>();
         _banner.AdLoaded += source =>
         {
-            _bannerRetries = 0;
             Log($"Banner loaded ({source})");
             if (!_banner.IsShown)
             {
                 _ui.SetBannerButtonLabel("Show Banner");
             }
         };
+        /*
+         * Only a live pass reaches this: the controller drops the terminal
+         * failure of a pass a Hide cancelled, so there is no hidden-slot case
+         * to report here.
+         */
         _banner.AdLoadFailed += (source, message) =>
-        {
-            var delay = NextRetryDelay(ref _bannerRetries);
-            Log($"Banner load failed ({source}): {message}; retrying in {delay:0}s");
-            Invoke(nameof(LoadBanner), delay);
-        };
+            Log($"Banner load failed ({source}): {message}; retrying");
         _banner.AdShown += source => _ui.SetBannerButtonLabel($"Hide Banner ({source})");
+        _banner.AdHidden += () => _ui.SetBannerButtonLabel("Show Banner");
+        _banner.ShowPending += () => _ui.SetBannerButtonLabel("Banner: loading...");
         _banner.AdClicked += source => Log($"Banner clicked ({source})");
 
-        _mrec = new FirstLookMrecController(
-            FirstLookConfig.CloudXAdUnitOrInvalid(DemoConfig.MrecAdUnitId),
-            DemoConfig.AdMobMrecAdUnitId,
-            cloudXAvailable);
-        _mrec.AdLoaded += source =>
-        {
-            _mrecRetries = 0;
-            Log($"MREC loaded ({source})");
-            if (!_mrec.IsShown)
-            {
-                _ui.SetMrecButtonLabel("Show MREC");
-            }
-        };
-        _mrec.AdLoadFailed += (source, message) =>
-        {
-            var delay = NextRetryDelay(ref _mrecRetries);
-            Log($"MREC load failed ({source}): {message}; retrying in {delay:0}s");
-            Invoke(nameof(LoadMrec), delay);
-        };
-        _mrec.AdShown += source => _ui.SetMrecButtonLabel($"Hide MREC ({source})");
-        _mrec.AdClicked += source => Log($"MREC clicked ({source})");
-
         LoadInterstitial();
-        LoadRewarded();
-        LoadBanner();
-        LoadMrec();
+        _banner.Begin(
+            DemoConfig.BannerAdUnitId,
+            DemoConfig.AdMobBannerAdUnitId,
+            cloudXAvailable);
         _ui.SetActionsInteractable(true);
     }
 
@@ -344,82 +300,25 @@ public class FirstLookScreen : MonoBehaviour
         LoadInterstitial();
     }
 
-    private void ShowRewarded()
-    {
-        var source = _rewarded.ReadySource;
-
-        if (_rewarded.Show())
-        {
-            Log($"Showing the rewarded ad ({source})");
-            return;
-        }
-
-        SetRewardedStatus("No ad ready; reloading");
-        LoadRewarded();
-    }
-
     private void ToggleBanner()
     {
-        if (_banner.IsShown)
-        {
-            _banner.Hide();
-            _ui.SetBannerButtonLabel("Show Banner");
-            return;
-        }
-
-        /* AdShown updates the label once a source actually shows. */
-        if (!_banner.Show())
-        {
-            _ui.SetBannerButtonLabel("Banner: loading...");
-            LoadBanner();
-        }
+        /* The cycle owns the timing; the label follows from its events. */
+        _banner.Toggle();
     }
 
-    private void ToggleMrec()
+    private float NextInterstitialRetryDelay()
     {
-        if (_mrec.IsShown)
-        {
-            _mrec.Hide();
-            _ui.SetMrecButtonLabel("Show MREC");
-            return;
-        }
-
-        if (!_mrec.Show())
-        {
-            _ui.SetMrecButtonLabel("MREC: loading...");
-            LoadMrec();
-        }
-    }
-
-    private static float NextRetryDelay(ref int retries)
-    {
-        var delay = Mathf.Min(RetryBaseDelaySeconds * Mathf.Pow(2f, retries), RetryMaxDelaySeconds);
-        retries++;
+        var delay = Mathf.Min(
+            RetryBaseDelaySeconds * Mathf.Pow(2f, _interstitialRetries),
+            RetryMaxDelaySeconds);
+        _interstitialRetries++;
         return delay;
     }
 
-    /*
-     * Named methods so terminal failures can retry via Invoke(nameof(...)).
-     */
-
+    /* Named so terminal interstitial failures can retry via Invoke(nameof(...)). */
     private void LoadInterstitial()
     {
         _interstitial?.Load();
-    }
-
-    private void LoadRewarded()
-    {
-        _rewarded?.Load();
-    }
-
-    private void LoadBanner()
-    {
-        _banner?.Load();
-    }
-
-    private void LoadMrec()
-    {
-        _mrec?.Load();
     }
 
     /*
@@ -435,11 +334,5 @@ public class FirstLookScreen : MonoBehaviour
     {
         Log($"Interstitial: {text.Replace('\n', ' ')}");
         _ui.SetInterstitialStatus($"Inter: {text}");
-    }
-
-    private void SetRewardedStatus(string text)
-    {
-        Log($"Rewarded: {text.Replace('\n', ' ')}");
-        _ui.SetRewardedStatus($"Rewarded: {text}");
     }
 }

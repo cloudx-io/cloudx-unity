@@ -139,6 +139,87 @@ public class AdScreenUi : MonoBehaviour
 
         if (_controlsParentedToLandscape)
             PlaceLandscapeStacks();
+        else
+            CompactPortraitColumn();
+    }
+
+    /*
+     * Closes the portrait column when the screen hid some buttons: the visible
+     * ones move up into the topmost scene slots, in their original order, so a
+     * hidden button leaves no gap in the middle. Each per-button status moves by
+     * the same delta so it stays on its button's row. No-op when nothing is
+     * hidden, which is every screen that uses all four buttons.
+     */
+    private void CompactPortraitColumn()
+    {
+        if (_hidden.Count == 0 || _portraitSnapshots == null)
+            return;
+
+        /*
+         * The scene places these controls with anchors, not anchoredPosition,
+         * so a slot is the pair of anchor y values and moving a button means
+         * giving it another slot's pair. A status keeps its own height and
+         * offset by shifting the same distance its button moved.
+         */
+        var slots = new List<Vector2>();
+        var visible = new List<ControlSnapshot>();
+        foreach (var snap in ButtonSnapshotsTopFirst())
+        {
+            slots.Add(new Vector2(snap.AnchorMin.y, snap.AnchorMax.y));
+            if (!_hidden.Contains(snap.Rect))
+                visible.Add(snap);
+        }
+
+        for (var i = 0; i < visible.Count; i++)
+        {
+            var slot = slots[i];
+            var rect = visible[i].Rect;
+            var shift = slot.x - visible[i].AnchorMin.y;
+
+            rect.anchorMin = new Vector2(rect.anchorMin.x, slot.x);
+            rect.anchorMax = new Vector2(rect.anchorMax.x, slot.y);
+
+            /*
+             * Shift the status from its scene anchors, not its current ones, so
+             * running this again lands it in the same place instead of drifting
+             * one slot further each time.
+             */
+            var status = StatusForButton(rect);
+            if (status != null && TryGetSnapshot(status, out var statusSnap))
+            {
+                status.anchorMin = new Vector2(status.anchorMin.x, statusSnap.AnchorMin.y + shift);
+                status.anchorMax = new Vector2(status.anchorMax.x, statusSnap.AnchorMax.y + shift);
+            }
+        }
+    }
+
+    private bool TryGetSnapshot(RectTransform rect, out ControlSnapshot snapshot)
+    {
+        foreach (var snap in _portraitSnapshots)
+        {
+            if (snap.Rect == rect)
+            {
+                snapshot = snap;
+                return true;
+            }
+        }
+
+        snapshot = default;
+        return false;
+    }
+
+    /* The four main buttons in scene order, topmost first. */
+    private List<ControlSnapshot> ButtonSnapshotsTopFirst()
+    {
+        var buttons = new List<ControlSnapshot>();
+        foreach (var snap in _portraitSnapshots)
+        {
+            if (Array.IndexOf(_landscapeMainLeft, snap.Rect) >= 0)
+                buttons.Add(snap);
+        }
+
+        buttons.Sort((left, right) => right.AnchorMax.y.CompareTo(left.AnchorMax.y));
+        return buttons;
     }
 
     public void SetInitializationStatus(string text)
@@ -512,6 +593,7 @@ public class AdScreenUi : MonoBehaviour
                 snap.Rect.gameObject.SetActive(true);
         }
         RestorePortraitTextStyles();
+        CompactPortraitColumn();
         _controlsParentedToLandscape = false;
         Log("Portrait layout restored");
     }
