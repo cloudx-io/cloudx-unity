@@ -35,7 +35,7 @@ public sealed class ArbiterInterstitialController : IDisposable
 
     private readonly string _cloudXAdUnitId;
     private readonly string _adMobAdUnitId;
-    private readonly bool _cloudXAvailable;
+    private readonly bool _includeCloudXInArbitration;
 
     private bool _isDisposed;
     private bool _isLoadingCloudX;
@@ -64,7 +64,7 @@ public sealed class ArbiterInterstitialController : IDisposable
     {
         _cloudXAdUnitId = cloudXAdUnitId;
         _adMobAdUnitId = adMobAdUnitId;
-        _cloudXAvailable = cloudXAvailable;
+        _includeCloudXInArbitration = cloudXAvailable;
         _cloudXSettled = !cloudXAvailable;
 
         SubscribeCloudXCallbacks();
@@ -105,7 +105,7 @@ public sealed class ArbiterInterstitialController : IDisposable
             return;
         }
 
-        if (_cloudXAvailable && !CloudXHasBid && !_isLoadingCloudX)
+        if (_includeCloudXInArbitration && !CloudXHasBid && !_isLoadingCloudX)
         {
             _cloudXSettled = false;
             _loadedCloudXAd = null;
@@ -178,7 +178,7 @@ public sealed class ArbiterInterstitialController : IDisposable
         _isDisposed = true;
         UnsubscribeCloudXCallbacks();
 
-        if (_cloudXAvailable)
+        if (_includeCloudXInArbitration)
         {
             CloudXSdk.DestroyInterstitial(_cloudXAdUnitId);
         }
@@ -200,7 +200,7 @@ public sealed class ArbiterInterstitialController : IDisposable
 
         var bids = new List<CloudXArbiterBid>();
 
-        if (_cloudXAvailable && CloudXHasBid)
+        if (_includeCloudXInArbitration && CloudXHasBid)
         {
             bids.Add(new CloudXArbiterBid.CloudX(_loadedCloudXAd));
         }
@@ -242,7 +242,7 @@ public sealed class ArbiterInterstitialController : IDisposable
             ArbiterCompleted?.Invoke(result, bids.Count);
         }
 
-        if (_cloudXAvailable)
+        if (_includeCloudXInArbitration)
         {
             CloudXSdk.Arbiter(bids, OnResult);
             return;
@@ -447,7 +447,7 @@ public sealed class ArbiterInterstitialController : IDisposable
 
     private void ReportAdMobPaidEvent(AdValue adValue, string adSourceName)
     {
-        if (!_cloudXAvailable)
+        if (!CloudXSdk.IsInitialized())
         {
             Log("AdMob paid event not forwarded: CloudX is not initialized");
             return;
