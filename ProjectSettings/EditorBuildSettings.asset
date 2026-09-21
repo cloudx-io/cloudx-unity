@@ -14,5 +14,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/FirstLookScene.unity
     guid: 33c712e03aba7427695d0bd645dcd1f8
+  - enabled: 1
+    path: Assets/Scenes/ArbiterScene.unity
+    guid: 0365ea9803b44c7da3c9fc6ebe403f63
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

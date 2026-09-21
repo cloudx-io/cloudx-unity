@@ -217,7 +217,7 @@ public class FirstLookScreen : MonoBehaviour
 
         _interstitial = new FirstLookInterstitialController(
             DemoConfig.InterstitialAdUnitId,
-            FirstLookConfig.AdMobInterstitialAdUnitId,
+            DemoConfig.AdMobInterstitialAdUnitId,
             cloudXAvailable);
         _interstitial.AdLoaded += source =>
         {
@@ -273,7 +273,7 @@ public class FirstLookScreen : MonoBehaviour
         LoadInterstitial();
         _banner.Begin(
             DemoConfig.BannerAdUnitId,
-            FirstLookConfig.AdMobBannerAdUnitId,
+            DemoConfig.AdMobBannerAdUnitId,
             cloudXAvailable);
         _ui.SetActionsInteractable(true);
     }
