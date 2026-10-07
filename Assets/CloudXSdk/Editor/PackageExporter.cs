@@ -4,9 +4,7 @@ using UnityEditor;
 namespace CloudX.Editor
 {
     /// <summary>
-    /// Exports CloudXSdk as a Unity package. External Dependency Manager is not
-    /// bundled anymore; it is consumed as the UPM package
-    /// com.google.external-dependency-manager instead.
+    /// Exports CloudXSdk and ExternalDependencyManager as a Unity package.
     /// Used by both CI (GameCI unity-builder) and local export scripts.
     /// </summary>
     public static class PackageExporter
@@ -16,6 +14,7 @@ namespace CloudX.Editor
 
         private static readonly string[] ExportPaths = {
             "Assets/CloudXSdk",
+            "Assets/ExternalDependencyManager",
         };
 
         /// <summary>

@@ -192,8 +192,49 @@ namespace CloudX.Editor
             
             // Add Swift support (required by some dependencies)
             AddSwiftSupport(buildPath, project, project.GetUnityFrameworkTargetGuid(), unityMainTargetGuid);
-            
+
+            // Ship CloudX's privacy manifest in the bundle that contains CloudX's code. Unity
+            // compiles Assets/**/Plugins/iOS sources into UnityFramework, not Unity-iPhone.
+            AddPrivacyManifest(buildPath, project, project.GetUnityFrameworkTargetGuid());
+
             project.WriteToFile(projectPath);
+        }
+
+        /// <summary>
+        /// Copies CloudX's privacy manifest into the exported Xcode project and adds it to the
+        /// main target's resources.
+        ///
+        /// The file MUST keep the basename PrivacyInfo.xcprivacy — Apple only recognises that
+        /// exact name, and a renamed copy is ignored entirely. To keep it from colliding with a
+        /// publisher's own manifest at the app bundle root, it goes inside its own resource
+        /// bundle directory rather than being renamed.
+        /// </summary>
+        private static void AddPrivacyManifest(string buildPath, PBXProject project, string targetGuid)
+        {
+            const string bundleName = "CloudXPrivacy.bundle";
+            const string manifestName = "PrivacyInfo.xcprivacy";
+
+            // Application.dataPath is the project's Assets folder regardless of the process's
+            // working directory, which is only set to the project root by some build entry points.
+            var source = Path.Combine(Application.dataPath, "CloudXSdk", "Editor", manifestName);
+            if (!File.Exists(source))
+            {
+                // Fail the build: shipping without the manifest is a silent compliance failure,
+                // and a warning in a long build log is easy to miss.
+                throw new BuildFailedException(
+                    $"[CloudX] Privacy manifest not found at {source}. Reimport the CloudX Unity package.");
+            }
+
+            var bundleDir = Path.Combine(buildPath, bundleName);
+            Directory.CreateDirectory(bundleDir);
+            File.Copy(source, Path.Combine(bundleDir, manifestName), true);
+
+            var bundleProjectPath = bundleName;
+            var existingGuid = project.FindFileGuidByProjectPath(bundleProjectPath);
+            var fileGuid = existingGuid ?? project.AddFile(bundleProjectPath, bundleProjectPath);
+            project.AddFileToBuild(targetGuid, fileGuid);
+
+            Debug.Log($"[CloudX] Added {bundleName}/{manifestName} to the exported Xcode project");
         }
 
         /// <summary>

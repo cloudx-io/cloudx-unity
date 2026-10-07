@@ -10,7 +10,7 @@ namespace CloudX
     {
         private static readonly PlatformDelegate PlatformDelegate;
         internal static readonly Logger Log = new Logger("CloudXUnityPlugin");
-        internal const string PluginVersion = "unity-4.6.1";
+        internal const string PluginVersion = "unity-4.9.0";
 
         static CloudXSdk()
         {
@@ -112,6 +112,16 @@ namespace CloudX
         public static bool IsInitialized()
         {
             return PlatformDelegate.IsInitialized();
+        }
+
+        /// <summary>
+        /// Opens the Mediation Debugger after the SDK initializes. The screen is intended for
+        /// development and QA builds.
+        /// </summary>
+        /// <returns>True when the debugger was requested, false before initialization or outside a mobile app.</returns>
+        public static bool ShowMediationDebugger()
+        {
+            return PlatformDelegate.ShowMediationDebugger();
         }
 
         public static void SetMinLogLevel(CloudXLogLevel level)

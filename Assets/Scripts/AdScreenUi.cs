@@ -18,6 +18,7 @@ public class AdScreenUi : MonoBehaviour
         public Action ToggleMrec;
         public Action ShowInterstitial;
         public Action ShowRewarded;
+        public Action ShowMediationDebugger;
         public Action<bool> OnOrientationChanged;
     }
 
@@ -25,6 +26,8 @@ public class AdScreenUi : MonoBehaviour
     public Button showMrecButton;
     public Button showInterstitialButton;
     public Button showRewardedButton;
+    /* Built in code rather than in the scene, so the scene asset stays untouched. */
+    private Button _mediationDebuggerButton;
     public Text initializationStatusText;
     public Text interstitialStatusText;
     public Text rewardedStatusText;
@@ -96,6 +99,8 @@ public class AdScreenUi : MonoBehaviour
         showMrecButton.onClick.AddListener(() => _actions.ToggleMrec());
         showInterstitialButton.onClick.AddListener(() => _actions.ShowInterstitial());
         showRewardedButton.onClick.AddListener(() => _actions.ShowRewarded());
+
+        SetupMediationDebuggerButton();
 
         SetupOrientationLayout();
     }
@@ -638,4 +643,51 @@ public class AdScreenUi : MonoBehaviour
     }
 
     #endregion
+
+    /*
+     * The Mediation Debugger button is created here instead of in the scene so
+     * that adding it costs no scene diff. It anchors to the bottom of the
+     * canvas and is deliberately left out of the orientation reflow lists in
+     * SetupOrientationLayout, so it keeps this anchoring in both orientations.
+     *
+     * It stays tappable before initialization on purpose: the SDK answers
+     * false until it is ready, and GeneralScreen reports that answer, which is
+     * the behaviour worth demonstrating.
+     */
+    private void SetupMediationDebuggerButton()
+    {
+        var buttonObj = new GameObject("MediationDebuggerButton");
+        buttonObj.transform.SetParent(transform, false);
+
+        var rect = buttonObj.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0f);
+        rect.anchorMax = new Vector2(0.5f, 0f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        rect.anchoredPosition = new Vector2(0f, 24f);
+        rect.sizeDelta = new Vector2(320f, 64f);
+
+        var image = buttonObj.AddComponent<Image>();
+        image.color = new Color(0.2f, 0.5f, 0.65f);
+
+        _mediationDebuggerButton = buttonObj.AddComponent<Button>();
+        _mediationDebuggerButton.targetGraphic = image;
+        _mediationDebuggerButton.onClick.AddListener(() => _actions.ShowMediationDebugger());
+
+        var textObj = new GameObject("Text");
+        textObj.transform.SetParent(buttonObj.transform, false);
+
+        var textRect = textObj.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        var text = textObj.AddComponent<Text>();
+        text.text = "Mediation Debugger";
+        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.fontSize = 24;
+        text.fontStyle = FontStyle.Bold;
+        text.color = Color.white;
+        text.alignment = TextAnchor.MiddleCenter;
+    }
 }

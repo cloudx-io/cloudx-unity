@@ -69,6 +69,11 @@ extern "C"
     {
         return [getAdManager() isInitialized];
     }
+
+    bool _CLXShowMediationDebugger()
+    {
+        return [CloudXCore showMediationDebugger];
+    }
     
     #pragma mark - Configuration
     

@@ -69,6 +69,11 @@ namespace CloudX.UnityPlayer
             return _isInitialized;
         }
 
+        public bool ShowMediationDebugger()
+        {
+            return false;
+        }
+
         public void SetHashedUserId(string hashedUserId)
         {
             CloudXSdk.Log.LogDebug(() => $"[CloudXAds Unity] Mock SetHashedUserId: {hashedUserId}");

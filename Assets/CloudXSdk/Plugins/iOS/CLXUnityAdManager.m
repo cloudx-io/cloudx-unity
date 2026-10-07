@@ -1270,7 +1270,7 @@ static NSString *const TAG = @"CLXUnityAdManager";
  * The caller owns event-specific fields such as `name` and `adUnitId`; this helper
  * appends the rest of the ad metadata without changing those caller-provided values.
  * Current fields added here are: `adFormat`, `networkName`, `placement`,
- * `networkPlacement`, and `revenue`.
+ * `networkPlacement`, `creativeId`, and `revenue`.
  */
 - (void)addAdFieldsToArgs:(NSMutableDictionary *)args ad:(CLXAd *)ad {
     if (!ad) {
@@ -1286,6 +1286,9 @@ static NSString *const TAG = @"CLXUnityAdManager";
     }
     if (ad.networkPlacement) {
         args[@"networkPlacement"] = ad.networkPlacement;
+    }
+    if (ad.creativeIdentifier) {
+        args[@"creativeId"] = ad.creativeIdentifier;
     }
 
     args[@"revenue"] = ad.revenue ?: @0;
