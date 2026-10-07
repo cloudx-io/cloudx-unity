@@ -51,9 +51,9 @@ namespace CloudX.Demo
         /*
          * Whether the platform call has been issued. Only ever touched on the Unity
          * thread, and it is what keeps a second caller -- or a first caller retrying
-         * after a timeout -- from starting a second worker. GeneralScene and
-         * FirstLookScene are separate scenes today so only one ever runs, but the ATT
-         * gate needs the same guard and this one costs nothing.
+         * after a timeout -- from starting a second worker. The General, First Look
+         * and Arbiter screens are separate scenes today so only one ever runs, but the
+         * ATT gate needs the same guard and this one costs nothing.
          */
         private static bool _started;
 #endif
@@ -107,6 +107,11 @@ namespace CloudX.Demo
          * iOS only. This call is what the Android path exists to replace: Unity documents
          * it as "an advertising ID for iOS and UWP" and returns false for it on Android,
          * which reads as "no advertising ID on this device" and is not what is happening.
+         *
+         * Known gap: this is the platform IDFA, which is not guaranteed to be the value
+         * the auction sends. The native iOS SDK sends CLXSettings.getIFA, which prefers a
+         * UserDefaults override and falls back to a placeholder, and the Unity bridge does
+         * not expose it. On a device with no override the two agree. README.md says so.
          */
         private static void StartPlatformResolve()
         {
@@ -142,7 +147,22 @@ namespace CloudX.Demo
         {
             var worker = new Thread(() =>
             {
-                AndroidJNI.AttachCurrentThread();
+                /*
+                 * Outside the try below on purpose: a thread that never attached must not
+                 * detach. But a failed attach still has to resolve, or Resolve() would
+                 * time out on every call for the rest of the process.
+                 */
+                try
+                {
+                    AndroidJNI.AttachCurrentThread();
+                }
+                catch (Exception e)
+                {
+                    _error = $"could not attach to the JVM ({e.Message})";
+                    _resolved = true;
+                    return;
+                }
+
                 try
                 {
                     using var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
@@ -211,6 +231,19 @@ namespace CloudX.Demo
             return message.Length == 0 ? e.GetType().Name : message;
         }
 #endif
+
+        /*
+         * What every screen that calls CloudXSdk.Initialize runs once tracking has been
+         * answered. The line is logged here, not by each screen, so it always carries the
+         * exact prefix README.md tells people to search for: the screens each log under
+         * their own sub-tag, and a reader grepping for the README string would miss
+         * those.
+         */
+        public static IEnumerator ResolveAndLog()
+        {
+            yield return Resolve();
+            Debug.Log($"[CloudXUnityDemo] Advertising ID: {Describe()}");
+        }
 
         /*
          * One line for the log: the full ID, which is the value to paste into the

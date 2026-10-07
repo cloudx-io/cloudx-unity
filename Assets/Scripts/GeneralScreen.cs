@@ -82,8 +82,7 @@ public class GeneralScreen : MonoBehaviour
          * declined: a zeroed ID is the specific symptom that looks like a wrong
          * dashboard entry rather than a consent problem.
          */
-        yield return DemoAdvertisingId.Resolve();
-        Log($"Advertising ID: {DemoAdvertisingId.Describe()}");
+        yield return DemoAdvertisingId.ResolveAndLog();
 
         if (!DemoAppTrackingiOS.IsUsable(DemoAppTrackingiOS.Status))
         {

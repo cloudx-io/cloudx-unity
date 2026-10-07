@@ -61,6 +61,13 @@ public class ArbiterScreen : MonoBehaviour
          */
         yield return DemoAppTrackingiOS.EnsureRequested();
 
+        /*
+         * Log the advertising ID once tracking has been answered, as the other two
+         * screens do: this screen has its own CloudXSdk.Initialize, and its CloudX leg
+         * no-fills the same way when the device is not whitelisted.
+         */
+        yield return DemoAdvertisingId.ResolveAndLog();
+
         if (!DemoAppTrackingiOS.IsUsable(DemoAppTrackingiOS.Status))
         {
             Log($"Tracking not authorized ({DemoAppTrackingiOS.Status}), leaving the UI disabled");

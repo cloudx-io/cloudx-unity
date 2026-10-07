@@ -95,8 +95,7 @@ public class FirstLookScreen : MonoBehaviour
          * Resolve is idempotent, and the status line here is already the two-part
          * "CloudX | AdMob" summary, so the verdict stays in the log.
          */
-        yield return DemoAdvertisingId.Resolve();
-        Log($"Advertising ID: {DemoAdvertisingId.Describe()}");
+        yield return DemoAdvertisingId.ResolveAndLog();
 
         if (!DemoAppTrackingiOS.IsUsable(DemoAppTrackingiOS.Status))
         {
