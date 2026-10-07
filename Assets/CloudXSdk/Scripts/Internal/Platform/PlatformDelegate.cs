@@ -54,6 +54,7 @@ internal interface PlatformDelegate
         Action<CloudXError> onFailure
     );
     bool IsInitialized();
+    bool ShowMediationDebugger();
     void SetMinLogLevel(CloudXLogLevel level);
     void SetHasUserConsent(bool? hasUserConsent);
     void SetDoNotSell(bool? doNotSell);

@@ -23,6 +23,15 @@ namespace CloudX
     /// (keys: auction_payload, bid_payload, arbiter_auction_payload, arbiter_bid_payload).
     /// Null or empty for non-CloudX network wins and when no metadata is available.
     /// </param>
+    /// <param name="CreativeId">Identifier of the creative served, if the network reports one. Null otherwise.</param>
+    /// <param name="MediatorName">
+    /// Mediator that supplied the ad, distinct from the winning network: "cloudx" for CloudX-won ads.
+    /// Null when no mediator is known, and on iOS and in the Editor until supported.
+    /// </param>
+    /// <param name="MediatorAdUnitId">
+    /// Ad unit identifier reported by the mediator; equals AdUnitId for CloudX-won ads.
+    /// Null when unavailable, and on iOS and in the Editor until supported.
+    /// </param>
     public record CloudXAd(
         CloudXAdFormat AdFormat,
         string AdUnitId,
@@ -30,6 +39,9 @@ namespace CloudX
         string NetworkName,
         string? NetworkPlacement,
         double Revenue,
-        IReadOnlyDictionary<string, string>? AdValues = null
+        IReadOnlyDictionary<string, string>? AdValues = null,
+        string? CreativeId = null,
+        string? MediatorName = null,
+        string? MediatorAdUnitId = null
     );
 }

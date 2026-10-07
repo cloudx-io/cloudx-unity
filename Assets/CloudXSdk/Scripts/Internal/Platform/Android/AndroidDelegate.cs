@@ -136,6 +136,11 @@ internal class AndroidDelegate : PlatformDelegate
         return _jniBridgeClass.CallStatic<bool>("isInitialized");
     }
 
+    public bool ShowMediationDebugger()
+    {
+        return _jniBridgeClass.CallStatic<bool>("showMediationDebugger");
+    }
+
     // Banner methods
     public void CreateHorizontalBanner(string adUnitId, CloudXAdViewConfiguration.AdViewPosition position)
     {

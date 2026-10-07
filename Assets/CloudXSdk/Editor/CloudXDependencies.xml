@@ -10,23 +10,24 @@
             <repository>https://maven.singular.net</repository>
         </repositories>
         <!-- CloudX Core SDK -->
-        <androidPackage spec="io.cloudx:sdk:4.6.0"/>
+        <androidPackage spec="io.cloudx:sdk:4.+"/>
 
         <!-- Optional: CloudX Adapters (uncomment as needed) -->
 <!--        <androidPackage spec="io.cloudx:adapter-meta:6.22.0.0"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-vungle:7.7.7.0"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-inmobi:11.4.0.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-mintegral:17.1.71.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-unityads:4.19.0.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-magnite:1.0.0.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-moloco:4.11.0.0"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-verve:3.9.0.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-googlewaterfall:25.2.0.5"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-vungle:7.7.9.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-inmobi:11.5.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-mintegral:17.1.81.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-unityads:4.21.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-magnite:1.0.0.2"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-moloco:4.13.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-verve:3.9.2.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-googlewaterfall:25.5.0.0"/>-->
 <!--        <androidPackage spec="io.cloudx:adapter-digitalturbine:8.4.7.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-pangle:8.2.0.4.0"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-mobilefuse:1.11.0.1"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-admob:1.3.0.4"/>-->
-<!--        <androidPackage spec="io.cloudx:adapter-taurusx:1.18.3.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-pangle:8.3.0.4.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-mobilefuse:1.12.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-admob:1.5.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-taurusx:1.19.1.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-bigo:6.1.0.0"/>-->
 
         <!-- Optional: MMP ad-revenue connectors (uncomment as needed; requires the MMP's own SDK in your app) -->
 <!--        <androidPackage spec="io.cloudx:connector-adjust:5.0.0.0"/>-->
@@ -52,21 +53,22 @@
         Adapter pods version independently of CloudXCore (3.5.0+).
     -->
     <iosPods>
-        <iosPod name="CloudXCore" version="3.8.0" minTargetSdk="13.0"/>
+        <iosPod name="CloudXCore" version="~> 3.0" minTargetSdk="13.0"/>
         <!-- Optional adapters - uncomment as needed -->
         <!-- <iosPod name="CloudXMetaAdapter" version="6.22.0.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXVungleAdapter" version="7.7.4.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXVungleAdapter" version="7.7.6.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXInMobiAdapter" version="11.4.1.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXMintegralAdapter" version="8.1.5.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXUnityAdsAdapter" version="4.19.0.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXMagniteAdapterV2" version="1.0.0.1" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXMolocoAdapter" version="4.8.0.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXMintegralAdapter" version="8.1.6.1" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXUnityAdsAdapter" version="4.20.1.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXMagniteAdapterV2" version="1.0.0.2" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXMolocoAdapter" version="4.11.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXVerveAdapter" version="3.9.0.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXGoogleWaterfallAdapter" version="13.6.0.4" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXDigitalTurbineAdapter" version="8.4.8.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXPangleAdapter" version="8.2.0.7.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXGoogleWaterfallAdapter" version="13.9.0.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXDigitalTurbineAdapter" version="8.4.10.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXPangleAdapter" version="8.3.0.6.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXMobileFuseAdapter" version="1.11.0.1" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXTaurusXAdapter" version="1.18.2.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXBigoAdapter" version="6.1.0.0" minTargetSdk="13.0"/> -->
         <!-- Optional: MMP ad-revenue connectors (uncomment as needed; requires the MMP's own SDK in your app) -->
         <!-- <iosPod name="CloudXAdjustConnector" version="5.0.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXAppsFlyerConnector" version="6.15.0.0" minTargetSdk="13.0"/> -->

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  PrivacyInfo.xcprivacy
+  CloudX Unity SDK
+
+  This wrapper is a thin bridge over CloudXCore. It collects nothing of its own and calls
+  no Required Reason APIs; CloudXCore ships its own manifest covering the SDK's behaviour.
+
+  NSPrivacyTracking / NSPrivacyTrackingDomains are intentionally omitted, matching every
+  major mediator. Verified by ios/scripts/verify-privacy-manifests.sh.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+</dict>
+</plist>

@@ -130,6 +130,27 @@ public class GeneralScreen : MonoBehaviour
         }
     }
 
+
+    /*
+     * Opens the Mediation Debugger, an on-device screen listing every adapter
+     * with its version and status, the ad units and the SDK configuration.
+     * It is for development and QA builds.
+     *
+     * The call answers false rather than throwing when it cannot open, so the
+     * demo reports why instead of failing silently.
+     */
+    private void ShowMediationDebugger()
+    {
+        if (CloudXSdk.ShowMediationDebugger())
+            return;
+
+#if UNITY_EDITOR || !(UNITY_ANDROID || UNITY_IOS)
+        Log("Mediation Debugger runs on Android and iOS only");
+#else
+        Log("Mediation Debugger needs an initialized SDK");
+#endif
+    }
+
     private AdScreenUi.Actions CreateUiActions()
     {
         return new AdScreenUi.Actions
@@ -138,6 +159,7 @@ public class GeneralScreen : MonoBehaviour
             ToggleMrec = ToggleMrecVisibility,
             ShowInterstitial = ShowInterstitial,
             ShowRewarded = ShowRewardedAd,
+            ShowMediationDebugger = ShowMediationDebugger,
             OnOrientationChanged = OnBannerOrientationChanged,
         };
     }

@@ -103,6 +103,9 @@ namespace CloudX.IOS
         private static extern bool _CLXIsInitialized();
 
         [DllImport("__Internal")]
+        private static extern bool _CLXShowMediationDebugger();
+
+        [DllImport("__Internal")]
         private static extern void _CLXSetHashedUserId(string hashedUserId);
 
         [DllImport("__Internal")]
@@ -533,6 +536,15 @@ namespace CloudX.IOS
             return _CLXIsInitialized();
 #else
             throw NotOnIOS(nameof(IsInitialized));
+#endif
+        }
+
+        public bool ShowMediationDebugger()
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            return _CLXShowMediationDebugger();
+#else
+            throw NotOnIOS(nameof(ShowMediationDebugger));
 #endif
         }
 
@@ -1002,7 +1014,8 @@ namespace CloudX.IOS
                 GetString(props, "networkName"),
                 GetString(props, "networkPlacement"),
                 GetDouble(props, "revenue"),
-                GetStringDictionary(props, "adValues")
+                GetStringDictionary(props, "adValues"),
+                GetString(props, "creativeId")
             );
         }
 

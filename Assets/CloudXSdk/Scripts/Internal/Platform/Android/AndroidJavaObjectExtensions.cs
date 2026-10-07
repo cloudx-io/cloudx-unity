@@ -20,12 +20,19 @@ internal static class AndroidJavaObjectExtensions
         var placement = javaObject.Call<string>("getPlacement");
         var networkName = javaObject.Call<string>("getNetworkName");
         var networkPlacement = javaObject.Call<string>("getNetworkPlacement");
+        var creativeId = javaObject.Call<string>("getCreativeId");
         var revenue = javaObject.Call<double>("getRevenue");
         var adValuesJava = javaObject.Call<AndroidJavaObject>("getAdValues");
         var adValues = adValuesJava?.ToStringDictionary();
+        // Android reports an unknown mediator as "", iOS and the Editor as null; expose null everywhere.
+        var mediatorName = NullIfEmpty(javaObject.Call<string>("getMediatorName"));
+        var mediatorAdUnitId = NullIfEmpty(javaObject.Call<string>("getMediatorAdUnitId"));
 
-        return new CloudXAd(adFormat, adUnitId, placement, networkName, networkPlacement, revenue, adValues);
+        return new CloudXAd(adFormat, adUnitId, placement, networkName, networkPlacement, revenue,
+            adValues, creativeId, mediatorName, mediatorAdUnitId);
     }
+
+    internal static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static CloudXAdFormat ParseCloudXAdFormat(string adFormatName)
     {
@@ -91,8 +98,19 @@ internal static class AndroidJavaObjectExtensions
 
     public static CloudXSdkConfiguration ToCloudXSdkConfiguration(this AndroidJavaObject javaObject)
     {
-        // CloudXSdkConfiguration is an empty marker interface on Android
-        return new CloudXSdkConfiguration();
+        var configurations = new Dictionary<string, CloudXAdUnitConfiguration>();
+        using var javaMap = javaObject.Call<AndroidJavaObject>("getAdUnitConfigurations");
+        using var entrySet = javaMap.Call<AndroidJavaObject>("entrySet");
+        using var iterator = entrySet.Call<AndroidJavaObject>("iterator");
+        while (iterator.Call<bool>("hasNext"))
+        {
+            using var entry = iterator.Call<AndroidJavaObject>("next");
+            var adUnitId = entry.Call<string>("getKey");
+            using var value = entry.Call<AndroidJavaObject>("getValue");
+            configurations.Add(adUnitId,
+                new CloudXAdUnitConfiguration(value.Call<bool>("isOrchestratorEnabled")));
+        }
+        return new CloudXSdkConfiguration(configurations);
     }
 }
 }
