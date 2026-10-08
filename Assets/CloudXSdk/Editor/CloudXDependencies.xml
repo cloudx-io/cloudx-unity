@@ -61,7 +61,7 @@
         <!-- <iosPod name="CloudXMintegralAdapter" version="8.1.6.1" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXUnityAdsAdapter" version="4.20.1.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXMagniteAdapterV2" version="1.0.0.2" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXMolocoAdapter" version="4.11.0.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXMolocoAdapter" version="4.11.1.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXVerveAdapter" version="3.9.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXGoogleWaterfallAdapter" version="13.9.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXDigitalTurbineAdapter" version="8.4.10.0" minTargetSdk="13.0"/> -->
