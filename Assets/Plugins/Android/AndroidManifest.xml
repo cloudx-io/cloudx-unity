@@ -15,4 +15,10 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- Required from target SDK 33 (this project targets 36) to read the advertising ID;
+       without it the ID reads back as all zeros and no dashboard test-device entry can
+       ever match. play-services-ads-identifier declares it too, so this changes nothing
+       about the merged manifest - it is here so a publisher copying this demo sees the
+       requirement instead of inheriting it by accident. -->
+  <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 </manifest>

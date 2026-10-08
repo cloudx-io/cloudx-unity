@@ -287,6 +287,36 @@ The AdMob ad units in `DemoConfig.cs` are Google's official test units and stay 
 replace them with your own AdMob units when you take this into production, and set
 **Automatic refresh** to Disabled on the banner one (see the First Look section for why).
 
+### Test devices
+
+Test mode is server-controlled. A device serves CloudX test ads because its advertising ID is on the
+test-device list in your dashboard, not because of anything in this build — there is no code change
+that turns it on.
+
+The trap is that the advertising ID reads back as all zeros
+(`00000000-0000-0000-0000-000000000000`) when the device is opted out. That is a well-formed UUID, so
+it pastes into the dashboard without complaint and then matches nothing, which looks exactly like a
+wrong dashboard entry rather than a consent problem.
+
+So the demo reads the ID for you. Every screen that initializes CloudX (General, First Look and
+Arbiter/TPA) logs it in full at startup under `[CloudXUnityDemo] Advertising ID:`. You paste that
+value into the dashboard. The
+status line on the General screen carries a short verdict. The verdict is about the health of the
+ID, never about whether your dashboard entry took effect: no CloudX SDK exposes the resolved test
+flag, so "ok" means the ID is worth registering, not that it is registered.
+
+If it comes back zeroed, check the device:
+
+| Platform | The ID zeroes when |
+| --- | --- |
+| iOS | App Tracking Transparency was not authorized. The demo prompts on launch; iOS only asks once per install, so a refusal needs a reinstall to undo. |
+| Android | Ad personalization is off (Settings > Google > Ads > Delete advertising ID), or the app targets SDK 33+ without declaring `com.google.android.gms.permission.AD_ID`. |
+
+On iOS, the demo logs the device IDFA. The CloudX iOS SDK sends its own value, `CLXSettings.getIFA`.
+That value prefers an IFA override in `UserDefaults`, and it uses a placeholder when no IDFA is
+available. On a device with no override, the two values are the same. If a registered device still
+gets no test ads, make sure that no IFA override is set on it.
+
 ### iOS target SDK
 
 The project is configured for the **Simulator** SDK. To build for a physical iOS device, switch
