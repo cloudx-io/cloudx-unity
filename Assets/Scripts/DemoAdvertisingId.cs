@@ -71,7 +71,8 @@ namespace CloudX.Demo
          * Yields until the ID lands or the timeout expires, so a platform that never
          * answers cannot hang the demo's startup. On timeout the state is deliberately
          * left unresolved rather than marked failed: the answer usually arrives a moment
-         * later, and ShortStatus picks it up when initialization reports back.
+         * later, and Finish logs it then. The status line only carries a verdict if the
+         * answer landed before initialization reported back.
          */
         public static IEnumerator Resolve(float timeoutSeconds = 3f)
         {
@@ -93,11 +94,7 @@ namespace CloudX.Demo
                 yield return null;
             }
 #else
-            /* Assigned explicitly so the Editor build does not warn them unassigned. */
-            _id = null;
-            _trackingEnabled = false;
-            _error = "no advertising ID in the Editor";
-            _resolved = true;
+            Finish(null, false, "no advertising ID in the Editor");
             yield break;
 #endif
         }
@@ -116,18 +113,11 @@ namespace CloudX.Demo
         private static void StartPlatformResolve()
         {
             var started = Application.RequestAdvertisingIdentifierAsync(
-                (id, trackingEnabled, error) =>
-                {
-                    _id = id;
-                    _trackingEnabled = trackingEnabled;
-                    _error = error;
-                    _resolved = true;
-                });
+                (id, trackingEnabled, error) => Finish(id, trackingEnabled, error));
 
             if (!started)
             {
-                _error = "the platform declined to report one";
-                _resolved = true;
+                Finish(null, false, "the platform declined to report one");
             }
         }
 #endif
@@ -141,7 +131,8 @@ namespace CloudX.Demo
          * plain strings and bools cross back.
          *
          * Background so a Play services bind that never returns cannot hold the process
-         * open, and fire-and-forget because the coroutine above is what waits.
+         * open, and fire-and-forget because the coroutine above is what waits. The bind
+         * can take longer than that wait, which is why Finish, not the coroutine, logs.
          */
         private static void StartPlatformResolve()
         {
@@ -158,11 +149,13 @@ namespace CloudX.Demo
                 }
                 catch (Exception e)
                 {
-                    _error = $"could not attach to the JVM ({e.Message})";
-                    _resolved = true;
+                    Finish(null, false, $"could not attach to the JVM ({e.Message})");
                     return;
                 }
 
+                string id = null;
+                var trackingEnabled = false;
+                string error = null;
                 try
                 {
                     using var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
@@ -171,23 +164,22 @@ namespace CloudX.Demo
                         new AndroidJavaClass("com.google.android.gms.ads.identifier.AdvertisingIdClient");
                     using var info = client.CallStatic<AndroidJavaObject>("getAdvertisingIdInfo", activity);
 
-                    _id = info.Call<string>("getId");
+                    id = info.Call<string>("getId");
                     /*
                      * Limit ad tracking is the pre-Android-12 form of opting out: the ID
                      * stays real but must not be used for ads. From Android 12 the ID
                      * itself zeroes instead, so on a modern device this is normally false
-                     * whenever _id is usable.
+                     * whenever the ID is usable.
                      */
-                    _trackingEnabled = !info.Call<bool>("isLimitAdTrackingEnabled");
+                    trackingEnabled = !info.Call<bool>("isLimitAdTrackingEnabled");
                 }
                 catch (Exception e)
                 {
-                    _error = DescribeAndroidFailure(e);
+                    error = DescribeAndroidFailure(e);
                 }
                 finally
                 {
-                    /* Last, and volatile, so the reader sees the values above it. */
-                    _resolved = true;
+                    Finish(id, trackingEnabled, error);
                     AndroidJNI.DetachCurrentThread();
                 }
             })
@@ -233,16 +225,43 @@ namespace CloudX.Demo
 #endif
 
         /*
+         * Every result path ends here, exactly once per process: the platform call is
+         * only ever issued once. It logs the ID when the answer arrives, not when Resolve
+         * stops waiting, so an answer slower than that wait still reaches the log. The
+         * line is logged here, not by each screen, so it always carries the exact prefix
+         * README.md tells people to search for.
+         *
+         * May run off the Unity thread. Debug.Log is safe there, and _resolved is written
+         * last so a reader that sees it true also sees the values before it.
+         */
+        private static void Finish(string id, bool trackingEnabled, string error)
+        {
+            _id = id;
+            _trackingEnabled = trackingEnabled;
+            _error = error;
+            _resolved = true;
+            Debug.Log($"[CloudXUnityDemo] Advertising ID: {Describe()}");
+        }
+
+        /*
          * What every screen that calls CloudXSdk.Initialize runs once tracking has been
-         * answered. The line is logged here, not by each screen, so it always carries the
-         * exact prefix README.md tells people to search for: the screens each log under
-         * their own sub-tag, and a reader grepping for the README string would miss
-         * those.
+         * answered. Finish logs the ID the first time it lands. A later screen in the
+         * same process finds it already resolved, so it logs it again here. When the
+         * answer is late, this says so, so that nobody reads a missing line as a missing
+         * ID.
          */
         public static IEnumerator ResolveAndLog()
         {
+            var alreadyResolved = _resolved;
             yield return Resolve();
-            Debug.Log($"[CloudXUnityDemo] Advertising ID: {Describe()}");
+            if (alreadyResolved)
+            {
+                Debug.Log($"[CloudXUnityDemo] Advertising ID: {Describe()}");
+            }
+            else if (!_resolved)
+            {
+                Debug.Log("[CloudXUnityDemo] Advertising ID: still resolving, logged when it arrives");
+            }
         }
 
         /*
