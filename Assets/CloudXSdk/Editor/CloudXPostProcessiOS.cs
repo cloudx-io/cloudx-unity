@@ -26,6 +26,8 @@ namespace CloudX.Editor
         private const int EmbedFrameworksPriority = 90;
         private const string UserTrackingUsageDescriptionKey = "NSUserTrackingUsageDescription";
         private const string DefaultUserTrackingUsageDescription = "This uses device info for more personalized ads and content";
+        private const string AdNetworkIdentifiersKey = "AdNetworkIdentifiers";
+        private const string SimulaAdNetworkIdentifier = "2xg367y5gd.adattributionkit";
         private const string SkAdNetworkItemsKey = "SKAdNetworkItems";
         private const string SkAdNetworkIdentifierKey = "SKAdNetworkIdentifier";
 
@@ -149,6 +151,7 @@ namespace CloudX.Editor
             "44n7hlldy6.skadnetwork",
             "ecpz2srf59.skadnetwork",
             "bvpn9ufa9b.skadnetwork",
+            SimulaAdNetworkIdentifier,
         };
 
         internal static IReadOnlyList<string> RequiredSkAdNetworkIds => SkAdNetworkIds;
@@ -267,10 +270,42 @@ namespace CloudX.Editor
                 Debug.Log($"[CloudX] Added {addedSkAdNetworkIds} SKAdNetwork identifiers to Info.plist");
             }
 
+            var addedAdNetworkIds = AddRequiredAdNetworkIds(plist);
+            changed |= addedAdNetworkIds > 0;
+            if (addedAdNetworkIds > 0)
+            {
+                Debug.Log($"[CloudX] Added {addedAdNetworkIds} AdAttributionKit identifiers to Info.plist");
+            }
+
             if (changed)
             {
                 plist.WriteToFile(plistPath);
             }
+        }
+
+        internal static int AddRequiredAdNetworkIds(PlistDocument plist)
+        {
+            if (plist.root.values.TryGetValue(AdNetworkIdentifiersKey, out var existingElement) &&
+                !(existingElement is PlistElementArray))
+            {
+                throw new BuildFailedException(
+                    $"[CloudX] {AdNetworkIdentifiersKey} in Info.plist must be an array");
+            }
+
+            var identifiers = existingElement as PlistElementArray ??
+                plist.root.CreateArray(AdNetworkIdentifiersKey);
+            foreach (var element in identifiers.values)
+            {
+                if (element is PlistElementString identifier &&
+                    string.Equals(identifier.AsString(), SimulaAdNetworkIdentifier,
+                        StringComparison.Ordinal))
+                {
+                    return 0;
+                }
+            }
+
+            identifiers.AddString(SimulaAdNetworkIdentifier);
+            return 1;
         }
 
         internal static int AddRequiredSkAdNetworkIds(PlistDocument plist)
@@ -284,7 +319,7 @@ namespace CloudX.Editor
 
             var skAdNetworkItems = existingElement as PlistElementArray ??
                 plist.root.CreateArray(SkAdNetworkItemsKey);
-            var existingIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var existingIds = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var element in skAdNetworkItems.values)
             {
@@ -296,7 +331,7 @@ namespace CloudX.Editor
                     continue;
                 }
 
-                existingIds.Add(identifierString.AsString().Trim());
+                existingIds.Add(identifierString.AsString());
             }
 
             var addedCount = 0;

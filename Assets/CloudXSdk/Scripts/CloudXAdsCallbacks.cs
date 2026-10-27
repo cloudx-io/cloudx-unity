@@ -151,6 +151,7 @@ public static class CloudXAdsCallbacks
         /// By default delivered immediately on the native callback thread, which is not the Unity main
         /// thread, so handlers must not use Unity APIs directly. Set
         /// <see cref="CloudXSdk.InvokeEventsOnUnityMainThread"/> to true to receive it on the Unity main thread.
+        /// On iOS, revenue raised while the app is inactive is delivered when the app becomes active again.
         /// </summary>
         public static event Action<CloudXAd> OnAdRevenuePaid;
 
@@ -240,6 +241,7 @@ public static class CloudXAdsCallbacks
         /// By default delivered immediately on the native callback thread, which is not the Unity main
         /// thread, so handlers must not use Unity APIs directly. Set
         /// <see cref="CloudXSdk.InvokeEventsOnUnityMainThread"/> to true to receive it on the Unity main thread.
+        /// On iOS, revenue raised while the app is inactive is delivered when the app becomes active again.
         /// </summary>
         public static event Action<CloudXAd> OnAdRevenuePaid;
 
@@ -332,6 +334,7 @@ public static class CloudXAdsCallbacks
         /// By default delivered immediately on the native callback thread, which is not the Unity main
         /// thread, so handlers must not use Unity APIs directly. Set
         /// <see cref="CloudXSdk.InvokeEventsOnUnityMainThread"/> to true to receive it on the Unity main thread.
+        /// On iOS, revenue raised while the app is inactive is delivered when the app becomes active again.
         /// </summary>
         public static event Action<CloudXAd> OnAdRevenuePaid;
 

@@ -10,7 +10,7 @@ namespace CloudX
     {
         private static readonly PlatformDelegate PlatformDelegate;
         internal static readonly Logger Log = new Logger("CloudXUnityPlugin");
-        internal const string PluginVersion = "unity-4.10.0";
+        internal const string PluginVersion = "unity-4.12.0";
 
         static CloudXSdk()
         {
@@ -79,6 +79,9 @@ namespace CloudX
         /// <item><c>false</c>: every callback runs inline on the native callback thread; handlers must not
         /// use Unity APIs.</item>
         /// </list>
+        /// On iOS, callbacks raised while the app is inactive (for example in the background) are
+        /// delivered when the app becomes active again, whichever thread they run on; if the app is
+        /// closed first, they are not delivered.
         /// Read on each callback, so it can be set at any time; set it before <see cref="Initialize"/> to
         /// cover initialization callbacks. A handler that throws is logged at ERROR with its type and method
         /// and does not affect other handlers.

@@ -16,7 +16,12 @@ extern "C" {
     UIWindow* UnityGetMainWindow(void);
     // Unity view controller notification, posted after every layout pass of the Unity view
     extern NSString* const kUnityViewDidLayoutSubviews;
-    
+    /*
+     * Unity trampoline flag. Set in applicationWillResignActive:, in applicationWillTerminate:
+     * (from 2022.3.44f1 and 6000.0.15f1) and on quit; cleared in applicationDidBecomeActive:.
+     */
+    extern bool _didResignActive;
+
     void clx_unity_dispatch_on_main_thread(dispatch_block_t block)
     {
         if (block) {
@@ -76,15 +81,17 @@ typedef NS_ENUM(NSInteger, AdLoadType) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingAppOpenExtraParameters;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingRewardedExtraParameters;
 /*
- * Serial background queue every Unity callback is forwarded on. The C# side (CallbackDispatcher)
- * then either marshals to the Unity main thread or runs the publisher handler inline on this
- * queue thread, so a callback that CloudXSdk.InvokeEventsOnUnityMainThread resolves to "not on
- * the Unity main thread" is genuinely off it on iOS as well as Android.
- * maxConcurrentOperationCount = 1 keeps the forwarding order into C#; the order the publisher
- * observes can still differ when the C# side delivers some events inline on this queue thread
- * and marshals others to the next Update(). The queue is not suspended while the app is
- * inactive: main-thread work already waits in UnityMainThreadDispatcher until Unity resumes,
- * and Android has no such suspension either.
+ * Serial queue every Unity callback is forwarded on, so callbacks that
+ * CloudXSdk.InvokeEventsOnUnityMainThread keeps off the Unity main thread really run off it.
+ * One operation at a time keeps the order into C#; events the C# side marshals to the next
+ * Update() can still reach the publisher in a different order.
+ *
+ * Suspended while the app is inactive (Unity's _didResignActive, read before each event is
+ * queued) and resumed when it becomes active again. Closing from the app switcher makes the app
+ * inactive before applicationWillTerminate: stops Unity's runtime, so the hide event that this
+ * shutdown fires waits here instead of crashing in a call into the stopped runtime.
+ * _didResignActive is set on every Unity version; Unity clears its own ready state before
+ * shutdown only from 2022.3.44f1 and 6000.0.15f1.
  */
 @property (nonatomic, strong) NSOperationQueue *backgroundCallbackEventsQueue;
 
@@ -135,6 +142,10 @@ static CGFloat const CLXVerticalBannerHalfStripWidth = 25.0; // standard banner 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(unityViewDidLayoutSubviews:)
                                                      name:kUnityViewDidLayoutSubviews
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(applicationDidBecomeActive:)
+                                                     name:UIApplicationDidBecomeActiveNotification
                                                    object:nil];
     }
     return self;
@@ -1345,10 +1356,23 @@ static CGFloat const CLXVerticalBannerHalfStripWidth = 25.0; // standard banner 
 
     // Snapshot so a caller mutating its NSMutableDictionary after this call cannot race the queue thread.
     NSDictionary *snapshot = [args copy];
-    [self.backgroundCallbackEventsQueue addOperationWithBlock:^{
-        NSString *json = [CLXUnityAdManager serializeParameters:snapshot];
-        callback(json.UTF8String);
-    }];
+    /*
+     * Read the flag and queue on the main thread, where Unity changes _didResignActive and
+     * applicationDidBecomeActive: resumes the queue, so a caller on another thread cannot read a
+     * stale flag and suspend the queue again after it was resumed. Runs inline on the main thread.
+     */
+    clx_unity_dispatch_on_main_thread(^{
+        // Hold events while the app is inactive; applicationDidBecomeActive: resumes the queue.
+        self.backgroundCallbackEventsQueue.suspended = _didResignActive;
+        [self.backgroundCallbackEventsQueue addOperationWithBlock:^{
+            NSString *json = [CLXUnityAdManager serializeParameters:snapshot];
+            callback(json.UTF8String);
+        }];
+    });
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+    self.backgroundCallbackEventsQueue.suspended = NO;
 }
 
 #pragma mark - Arbiter
