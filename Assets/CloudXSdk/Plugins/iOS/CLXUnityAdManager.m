@@ -14,7 +14,14 @@ extern "C" {
     // Unity functions
     UIViewController* UnityGetGLViewController(void);
     UIWindow* UnityGetMainWindow(void);
-    
+    // Unity view controller notification, posted after every layout pass of the Unity view
+    extern NSString* const kUnityViewDidLayoutSubviews;
+    /*
+     * Unity trampoline flag. Set in applicationWillResignActive:, in applicationWillTerminate:
+     * (from 2022.3.44f1 and 6000.0.15f1) and on quit; cleared in applicationDidBecomeActive:.
+     */
+    extern bool _didResignActive;
+
     void clx_unity_dispatch_on_main_thread(dispatch_block_t block)
     {
         if (block) {
@@ -53,6 +60,13 @@ typedef NS_ENUM(NSInteger, AdLoadType) {
  */
 @property (nonatomic, strong, readwrite) NSMutableDictionary<NSString *, NSNumber *> *bannerVerticalKinds;
 
+/*
+ * Edge constraint of each attached vertical banner, keyed by ad unit id. Its constant is
+ * re-resolved after every Unity view layout pass, because the notch / Dynamic Island can
+ * move to the opposite edge without any safe-area inset changing.
+ */
+@property (nonatomic, strong, readwrite) NSMutableDictionary<NSString *, NSLayoutConstraint *> *verticalBannerEdgeConstraints;
+
 /// Tracks which ad type is currently loading (for error callbacks without ad instance)
 /// TODO(CXD-610): Refactor Unity iOS load-failure routing to match Android bridge callback wiring.
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *loadingAdTypes;
@@ -67,15 +81,17 @@ typedef NS_ENUM(NSInteger, AdLoadType) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingAppOpenExtraParameters;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary<NSString *, id> *> *pendingRewardedExtraParameters;
 /*
- * Serial background queue every Unity callback is forwarded on. The C# side (CallbackDispatcher)
- * then either marshals to the Unity main thread or runs the publisher handler inline on this
- * queue thread, so a callback that CloudXSdk.InvokeEventsOnUnityMainThread resolves to "not on
- * the Unity main thread" is genuinely off it on iOS as well as Android.
- * maxConcurrentOperationCount = 1 keeps the forwarding order into C#; the order the publisher
- * observes can still differ when the C# side delivers some events inline on this queue thread
- * and marshals others to the next Update(). The queue is not suspended while the app is
- * inactive: main-thread work already waits in UnityMainThreadDispatcher until Unity resumes,
- * and Android has no such suspension either.
+ * Serial queue every Unity callback is forwarded on, so callbacks that
+ * CloudXSdk.InvokeEventsOnUnityMainThread keeps off the Unity main thread really run off it.
+ * One operation at a time keeps the order into C#; events the C# side marshals to the next
+ * Update() can still reach the publisher in a different order.
+ *
+ * Suspended while the app is inactive (Unity's _didResignActive, read before each event is
+ * queued) and resumed when it becomes active again. Closing from the app switcher makes the app
+ * inactive before applicationWillTerminate: stops Unity's runtime, so the hide event that this
+ * shutdown fires waits here instead of crashing in a call into the stopped runtime.
+ * _didResignActive is set on every Unity version; Unity clears its own ready state before
+ * shutdown only from 2022.3.44f1 and 6000.0.15f1.
  */
 @property (nonatomic, strong) NSOperationQueue *backgroundCallbackEventsQueue;
 
@@ -83,6 +99,7 @@ typedef NS_ENUM(NSInteger, AdLoadType) {
 
 static CLXUnityBackgroundCallback _backgroundCallback;
 static NSString *const TAG = @"CLXUnityAdManager";
+static CGFloat const CLXVerticalBannerHalfStripWidth = 25.0; // standard banner height 50pt / 2
 
 @implementation CLXUnityAdManager
 
@@ -107,6 +124,7 @@ static NSString *const TAG = @"CLXUnityAdManager";
         _bannerPositions = [NSMutableDictionary new];
         _mrecPositions = [NSMutableDictionary new];
         _bannerVerticalKinds = [NSMutableDictionary new];
+        _verticalBannerEdgeConstraints = [NSMutableDictionary new];
         _loadingAdTypes = [NSMutableDictionary new];
         _disabledAutoRefreshPlacements = [NSMutableSet new];
         _pendingBannerPlacements = [NSMutableDictionary new];
@@ -121,6 +139,14 @@ static NSString *const TAG = @"CLXUnityAdManager";
         _backgroundCallbackEventsQueue = [[NSOperationQueue alloc] init];
         _backgroundCallbackEventsQueue.name = @"io.cloudx.unity.callbacks";
         _backgroundCallbackEventsQueue.maxConcurrentOperationCount = 1;
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(unityViewDidLayoutSubviews:)
+                                                     name:kUnityViewDidLayoutSubviews
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(applicationDidBecomeActive:)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
     }
     return self;
 }
@@ -340,7 +366,7 @@ static NSString *const TAG = @"CLXUnityAdManager";
 
     NSString *positionDescription = self.bannerPositions[adUnitId];
     if ([self.bannerVerticalKinds[adUnitId] boolValue]) {
-        [self positionVerticalAdView:banner verticalPosition:positionDescription];
+        [self positionVerticalAdView:banner adUnitId:adUnitId verticalPosition:positionDescription];
     } else {
         [self positionAdView:banner position:positionDescription];
     }
@@ -504,6 +530,7 @@ static NSString *const TAG = @"CLXUnityAdManager";
         if (!banner) {
             [self.bannerPositions removeObjectForKey:adUnitId];
             [self.bannerVerticalKinds removeObjectForKey:adUnitId];
+            [self.verticalBannerEdgeConstraints removeObjectForKey:adUnitId];
             [self.loadingAdTypes removeObjectForKey:adUnitId];
             [self.disabledAutoRefreshPlacements removeObject:adUnitId];
             [self.pendingBannerPlacements removeObjectForKey:adUnitId];
@@ -517,6 +544,7 @@ static NSString *const TAG = @"CLXUnityAdManager";
         [self.banners removeObjectForKey:adUnitId];
         [self.bannerPositions removeObjectForKey:adUnitId];
         [self.bannerVerticalKinds removeObjectForKey:adUnitId];
+        [self.verticalBannerEdgeConstraints removeObjectForKey:adUnitId];
         [self.loadingAdTypes removeObjectForKey:adUnitId];
         [self.disabledAutoRefreshPlacements removeObject:adUnitId];
         [self.pendingBannerPlacements removeObjectForKey:adUnitId];
@@ -1328,10 +1356,23 @@ static NSString *const TAG = @"CLXUnityAdManager";
 
     // Snapshot so a caller mutating its NSMutableDictionary after this call cannot race the queue thread.
     NSDictionary *snapshot = [args copy];
-    [self.backgroundCallbackEventsQueue addOperationWithBlock:^{
-        NSString *json = [CLXUnityAdManager serializeParameters:snapshot];
-        callback(json.UTF8String);
-    }];
+    /*
+     * Read the flag and queue on the main thread, where Unity changes _didResignActive and
+     * applicationDidBecomeActive: resumes the queue, so a caller on another thread cannot read a
+     * stale flag and suspend the queue again after it was resumed. Runs inline on the main thread.
+     */
+    clx_unity_dispatch_on_main_thread(^{
+        // Hold events while the app is inactive; applicationDidBecomeActive: resumes the queue.
+        self.backgroundCallbackEventsQueue.suspended = _didResignActive;
+        [self.backgroundCallbackEventsQueue addOperationWithBlock:^{
+            NSString *json = [CLXUnityAdManager serializeParameters:snapshot];
+            callback(json.UTF8String);
+        }];
+    });
+}
+
+- (void)applicationDidBecomeActive:(NSNotification *)notification {
+    self.backgroundCallbackEventsQueue.suspended = NO;
 }
 
 #pragma mark - Arbiter
@@ -1711,34 +1752,31 @@ static NSString *const TAG = @"CLXUnityAdManager";
 }
 
 /*
- * Positions a banner as a vertical strip flush against the left or right safe-area edge.
+ * Positions a banner as a vertical strip flush against the left or right screen edge.
  *
  * Auto Layout resolves the untransformed frame and the rotation transform spins the view
  * about its center at render time, so pinning the center half a strip-width (banner
  * height / 2) from the target edge lands the rotated strip exactly flush on that edge.
- * The banner's intrinsicContentSize (320x50) provides the frame size.
+ * The banner's intrinsicContentSize (320x50) provides the frame size. The strip is
+ * centered on the screen, like the Android bridge, not on the safe area.
  *
- * The target edge is the safe area's, not the raw screen edge: in landscape the notch /
- * Dynamic Island of a portrait phone sits vertically centered on a short edge - exactly
- * where the vertical banner goes - so anchoring to safeAreaLayoutGuide insets the strip
- * past the cutout and keeps the creative fully visible. On edges without a cutout the
- * safe-area edge equals the screen edge and the strip stays flush. Auto Layout re-solves
- * the constraints automatically whenever the safe area changes (e.g. rotation).
+ * The edge constraint adds the edge's safe-area inset only while the notch / Dynamic
+ * Island is on that edge (see updateVerticalBannerEdgeConstraint:superview:). It is kept
+ * in verticalBannerEdgeConstraints so unityViewDidLayoutSubviews: can re-resolve it.
  */
-- (void)positionVerticalAdView:(UIView *)adView verticalPosition:(NSString *)verticalPosition {
+- (void)positionVerticalAdView:(UIView *)adView
+                      adUnitId:(NSString *)adUnitId
+              verticalPosition:(NSString *)verticalPosition {
     adView.translatesAutoresizingMaskIntoConstraints = NO;
 
     UIViewController *viewController = [self unityViewController];
     UIView *superview = viewController.view;
-    UILayoutGuide *safeArea = superview.safeAreaLayoutGuide;
 
     // Remove existing constraints
     [adView removeConstraints:adView.constraints];
 
-    CGFloat const halfStripWidth = 25.0; // standard banner height 50pt / 2
     NSString *position = verticalPosition.lowercaseString;
-    NSMutableArray *constraints = [NSMutableArray array];
-    [constraints addObject:[adView.centerYAnchor constraintEqualToAnchor:safeArea.centerYAnchor]];
+    NSLayoutConstraint *edgeConstraint;
 
     /*
      * Absolute left/right anchors, not leading/trailing: the position names promise physical
@@ -1746,19 +1784,71 @@ static NSString *const TAG = @"CLXUnityAdManager";
      * anchors would land the strip on the opposite edge with the creative facing outward.
      */
     if ([position isEqualToString:@"right"]) {
-        [constraints addObject:[adView.centerXAnchor constraintEqualToAnchor:safeArea.rightAnchor
-                                                                     constant:-halfStripWidth]];
+        edgeConstraint = [adView.centerXAnchor constraintEqualToAnchor:superview.rightAnchor];
         adView.transform = CGAffineTransformMakeRotation(-M_PI_2);
     } else {
         if (![position isEqualToString:@"left"]) {
             [self log:@"positionVerticalAdView called with unknown verticalPosition: %@. Falling back to Left.", verticalPosition];
         }
-        [constraints addObject:[adView.centerXAnchor constraintEqualToAnchor:safeArea.leftAnchor
-                                                                     constant:halfStripWidth]];
+        edgeConstraint = [adView.centerXAnchor constraintEqualToAnchor:superview.leftAnchor];
         adView.transform = CGAffineTransformMakeRotation(M_PI_2);
     }
 
-    [NSLayoutConstraint activateConstraints:constraints];
+    [self updateVerticalBannerEdgeConstraint:edgeConstraint superview:superview];
+    self.verticalBannerEdgeConstraints[adUnitId] = edgeConstraint;
+    [NSLayoutConstraint activateConstraints:@[
+        [adView.centerYAnchor constraintEqualToAnchor:superview.centerYAnchor],
+        edgeConstraint,
+    ]];
+}
+
+/*
+ * Sets the distance from the screen edge to the strip's center: half the strip width, plus
+ * the edge's safe-area inset unless the notch / Dynamic Island is on the opposite edge.
+ *
+ * In landscape UIKit reports equal left and right safe-area insets whichever side the
+ * cutout is on, so on the edge without it the inset is padding, not a cutout. The device
+ * top, where the cutout sits, is on the left in LandscapeRight and on the right in
+ * LandscapeLeft. Portrait and unknown orientations keep the inset on both edges, which is
+ * 0 on iPhones and iPads.
+ */
+- (void)updateVerticalBannerEdgeConstraint:(NSLayoutConstraint *)edgeConstraint superview:(UIView *)superview {
+    BOOL rightEdge = edgeConstraint.secondAttribute == NSLayoutAttributeRight;
+    UIInterfaceOrientation orientation = UIInterfaceOrientationUnknown;
+    if (@available(iOS 13.0, *)) {
+        orientation = superview.window.windowScene.interfaceOrientation;
+    }
+    BOOL cutoutOnOppositeEdge = rightEdge
+        ? orientation == UIInterfaceOrientationLandscapeRight
+        : orientation == UIInterfaceOrientationLandscapeLeft;
+
+    UIEdgeInsets safeAreaInsets = superview.safeAreaInsets;
+    CGFloat edgeInset = rightEdge ? safeAreaInsets.right : safeAreaInsets.left;
+    CGFloat offset = CLXVerticalBannerHalfStripWidth + (cutoutOnOppositeEdge ? 0.0 : edgeInset);
+    CGFloat constant = rightEdge ? -offset : offset;
+
+    // Skipping an unchanged constant keeps the layout pass that called this from repeating.
+    if (edgeConstraint.constant == constant) {
+        return;
+    }
+    edgeConstraint.constant = constant;
+    [self log:@"Vertical banner %@ edge offset set to %.1f pt (interface orientation %ld, safe area %@)",
+        rightEdge ? @"right" : @"left", offset, (long)orientation, NSStringFromUIEdgeInsets(safeAreaInsets)];
+}
+
+/*
+ * Unity posts kUnityViewDidLayoutSubviews after every layout pass of its view, including the
+ * one it requests when a rotation completes. A 180-degree landscape flip moves the cutout to
+ * the opposite edge without changing the view's bounds or safe-area insets, so Auto Layout
+ * alone would never move the strip.
+ */
+- (void)unityViewDidLayoutSubviews:(NSNotification *)notification {
+    [self.verticalBannerEdgeConstraints enumerateKeysAndObjectsUsingBlock:^(NSString *adUnitId, NSLayoutConstraint *edgeConstraint, BOOL *stop) {
+        UIView *superview = self.banners[adUnitId].superview;
+        if (superview) {
+            [self updateVerticalBannerEdgeConstraint:edgeConstraint superview:superview];
+        }
+    }];
 }
 
 /// Returns the banner for a placement and logs a warning when the caller expected one to exist.
