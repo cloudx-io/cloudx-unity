@@ -10,7 +10,7 @@ namespace CloudX
     {
         private static readonly PlatformDelegate PlatformDelegate;
         internal static readonly Logger Log = new Logger("CloudXUnityPlugin");
-        internal const string PluginVersion = "unity-4.12.0";
+        internal const string PluginVersion = "unity-4.13.0";
 
         static CloudXSdk()
         {

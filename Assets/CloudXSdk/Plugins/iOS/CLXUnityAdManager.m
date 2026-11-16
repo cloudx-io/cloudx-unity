@@ -1298,7 +1298,7 @@ static CGFloat const CLXVerticalBannerHalfStripWidth = 25.0; // standard banner 
  * The caller owns event-specific fields such as `name` and `adUnitId`; this helper
  * appends the rest of the ad metadata without changing those caller-provided values.
  * Current fields added here are: `adFormat`, `networkName`, `placement`,
- * `networkPlacement`, `creativeId`, and `revenue`.
+ * `networkPlacement`, `creativeId`, `mediatorName`, `mediatorAdUnitId`, `adValues`, and `revenue`.
  */
 - (void)addAdFieldsToArgs:(NSMutableDictionary *)args ad:(CLXAd *)ad {
     if (!ad) {
@@ -1318,6 +1318,14 @@ static CGFloat const CLXVerticalBannerHalfStripWidth = 25.0; // standard banner 
     if (ad.creativeIdentifier) {
         args[@"creativeId"] = ad.creativeIdentifier;
     }
+    if (ad.mediatorName.length > 0) {
+        args[@"mediatorName"] = ad.mediatorName;
+    }
+    if (ad.mediatorAdUnitId.length > 0) {
+        args[@"mediatorAdUnitId"] = ad.mediatorAdUnitId;
+    }
+    // Always sent, empty included, so C# gets a map as on Android rather than null.
+    args[@"adValues"] = ad.adValues ?: @{};
 
     args[@"revenue"] = ad.revenue ?: @0;
 }

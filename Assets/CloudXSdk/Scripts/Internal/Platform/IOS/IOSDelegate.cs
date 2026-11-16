@@ -1001,7 +1001,7 @@ namespace CloudX.IOS
 
         #region Helper Methods
 
-        private static CloudXAd CreateCloudXAd(Dictionary<string, object> props)
+        internal static CloudXAd CreateCloudXAd(Dictionary<string, object> props)
         {
             // Parse ad format from props if available, default to Interstitial
             var adFormatStr = GetString(props, "adFormat") ?? "INTERSTITIAL";
@@ -1015,7 +1015,9 @@ namespace CloudX.IOS
                 GetString(props, "networkPlacement"),
                 GetDouble(props, "revenue"),
                 GetStringDictionary(props, "adValues"),
-                GetString(props, "creativeId")
+                GetString(props, "creativeId"),
+                StringUtils.NullIfEmpty(GetString(props, "mediatorName")),
+                StringUtils.NullIfEmpty(GetString(props, "mediatorAdUnitId"))
             );
         }
 

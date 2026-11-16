@@ -28,6 +28,13 @@ namespace CloudX.Editor
         private const string DefaultUserTrackingUsageDescription = "This uses device info for more personalized ads and content";
         private const string AdNetworkIdentifiersKey = "AdNetworkIdentifiers";
         private const string SimulaAdNetworkIdentifier = "2xg367y5gd.adattributionkit";
+        // CloudX's own ad network ID; it goes under both keys, and each does a different job.
+        // SKAdNetworkItems: the iOS SDK sends these IDs in imp.ext.skadn.skadnetids, and
+        // CloudX Direct signs impressions only when that list has this ID. Keep it here even
+        // though it is an .adattributionkit ID, or signing stops. (Once the iOS SDK also reads
+        // AdNetworkIdentifiers, either key will reach skadnetids.)
+        // AdNetworkIdentifiers: what Apple checks when it validates an install.
+        private const string CloudXAdNetworkIdentifier = "38qq9uy75s.adattributionkit";
         private const string SkAdNetworkItemsKey = "SKAdNetworkItems";
         private const string SkAdNetworkIdentifierKey = "SKAdNetworkIdentifier";
 
@@ -152,9 +159,16 @@ namespace CloudX.Editor
             "ecpz2srf59.skadnetwork",
             "bvpn9ufa9b.skadnetwork",
             SimulaAdNetworkIdentifier,
+            CloudXAdNetworkIdentifier,
+        };
+
+        private static readonly string[] AdNetworkIds = {
+            SimulaAdNetworkIdentifier,
+            CloudXAdNetworkIdentifier,
         };
 
         internal static IReadOnlyList<string> RequiredSkAdNetworkIds => SkAdNetworkIds;
+        internal static IReadOnlyList<string> RequiredAdNetworkIds => AdNetworkIds;
         
         // Podfile configuration constants
         private const string TargetUnityIphonePodfileLine = "target 'Unity-iPhone' do";
@@ -294,18 +308,26 @@ namespace CloudX.Editor
 
             var identifiers = existingElement as PlistElementArray ??
                 plist.root.CreateArray(AdNetworkIdentifiersKey);
+            var existingIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var element in identifiers.values)
             {
-                if (element is PlistElementString identifier &&
-                    string.Equals(identifier.AsString(), SimulaAdNetworkIdentifier,
-                        StringComparison.Ordinal))
+                if (element is PlistElementString identifier)
                 {
-                    return 0;
+                    existingIds.Add(identifier.AsString());
                 }
             }
 
-            identifiers.AddString(SimulaAdNetworkIdentifier);
-            return 1;
+            var addedCount = 0;
+            foreach (var identifier in AdNetworkIds)
+            {
+                if (existingIds.Add(identifier))
+                {
+                    identifiers.AddString(identifier);
+                    addedCount++;
+                }
+            }
+
+            return addedCount;
         }
 
         internal static int AddRequiredSkAdNetworkIds(PlistDocument plist)
@@ -468,6 +490,7 @@ namespace CloudX.Editor
             
             // Find all xcframeworks in Pods
             var xcframeworks = Directory.GetDirectories(podsDirectory, "*.xcframework", SearchOption.AllDirectories);
+            var embeddedNames = new HashSet<string>(StringComparer.Ordinal);
             
             foreach (var xcframeworkPath in xcframeworks)
             {
@@ -504,7 +527,180 @@ namespace CloudX.Editor
                     project.AddFileToEmbedFrameworks(targetGuid, fileGuid);
                     Debug.Log($"[CloudX] Embedded {frameworkName} (created new reference)");
                 }
+                embeddedNames.Add(frameworkName);
             }
+
+            EmbedPathPodFrameworks(buildPath, project, targetGuid, embeddedNames);
+        }
+
+        /// <summary>
+        /// Embeds dynamic CloudX xcframeworks from pods declared with <c>:path</c>. Such pods live
+        /// outside Pods/, so the scan above never sees them, yet UnityFramework still links them.
+        /// </summary>
+        private static void EmbedPathPodFrameworks(
+            string buildPath, PBXProject project, string targetGuid, ISet<string> embeddedNames)
+        {
+            foreach (var xcframeworkPath in FindPathPodXcframeworks(buildPath))
+            {
+                var frameworkName = Path.GetFileNameWithoutExtension(xcframeworkPath);
+                if (embeddedNames.Contains(frameworkName)) continue;
+
+                if (!IsValidXcframeworkBundle(xcframeworkPath))
+                {
+                    Debug.Log($"[CloudX] Skipping {frameworkName} (invalid xcframework: missing Info.plist)");
+                    continue;
+                }
+
+                if (!IsDynamicFramework(xcframeworkPath))
+                {
+                    Debug.Log($"[CloudX] Skipping {frameworkName} (static library)");
+                    continue;
+                }
+
+                var fileGuid = project.FindFileGuidByRealPath(xcframeworkPath, PBXSourceTree.Absolute);
+                if (string.IsNullOrEmpty(fileGuid))
+                {
+                    fileGuid = project.AddFile(
+                        xcframeworkPath, "Frameworks/" + frameworkName + ".xcframework", PBXSourceTree.Absolute);
+                }
+                project.AddFileToEmbedFrameworks(targetGuid, fileGuid);
+                embeddedNames.Add(frameworkName);
+                Debug.Log($"[CloudX] Embedded {frameworkName} from :path pod at {xcframeworkPath}");
+            }
+        }
+
+        /// <summary>
+        /// Returns the absolute paths of <c>&lt;PodName&gt;.xcframework</c> bundles for CloudX pods
+        /// that Podfile.lock lists under EXTERNAL SOURCES with a <c>:path</c>. The path CocoaPods
+        /// installs from (its <c>-xcframeworks.sh</c> script) wins over a search of the pod folder.
+        /// </summary>
+        internal static List<string> FindPathPodXcframeworks(string buildPath)
+        {
+            var result = new List<string>();
+            var lockPath = Path.Combine(buildPath, "Podfile.lock");
+            if (!File.Exists(lockPath)) return result;
+
+            foreach (var pod in ReadPathPods(File.ReadAllLines(lockPath)))
+            {
+                if (!pod.Key.StartsWith("CloudX", StringComparison.Ordinal)) continue;
+
+                var match = FindInstalledXcframework(buildPath, pod.Key) ??
+                    SearchPodDirectory(ResolvePodDirectory(buildPath, pod.Value), pod.Key);
+                if (match != null) result.Add(match);
+            }
+
+            return result;
+        }
+
+        private static string FindInstalledXcframework(string buildPath, string podName)
+        {
+            var podsRoot = Path.Combine(buildPath, "Pods");
+            var script = Path.Combine(podsRoot, "Target Support Files", podName, podName + "-xcframeworks.sh");
+            if (!File.Exists(script)) return null;
+
+            const string prefix = "install_xcframework \"";
+            foreach (var line in File.ReadAllLines(script))
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.StartsWith(prefix, StringComparison.Ordinal)) continue;
+
+                var end = trimmed.IndexOf('"', prefix.Length);
+                if (end < 0) continue;
+
+                var path = trimmed.Substring(prefix.Length, end - prefix.Length)
+                    .Replace("${PODS_ROOT}", podsRoot);
+                if (!string.Equals(Path.GetFileName(path), podName + ".xcframework", StringComparison.Ordinal)) continue;
+
+                var fullPath = Path.GetFullPath(path);
+                if (Directory.Exists(fullPath)) return fullPath;
+            }
+
+            return null;
+        }
+
+        private static string SearchPodDirectory(string podDirectory, string podName)
+        {
+            if (!Directory.Exists(podDirectory)) return null;
+
+            return Directory
+                .GetDirectories(podDirectory, podName + ".xcframework", SearchOption.AllDirectories)
+                .OrderBy(path => path.Length)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .FirstOrDefault();
+        }
+
+        internal static string ResolvePodDirectory(string buildPath, string podPath)
+        {
+            if (podPath == "~" || podPath.StartsWith("~/", StringComparison.Ordinal))
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                podPath = home + podPath.Substring(1);
+            }
+            return Path.GetFullPath(Path.Combine(buildPath, podPath));
+        }
+
+        /// <summary>
+        /// Parses the EXTERNAL SOURCES section of a Podfile.lock into pod name to <c>:path</c> value.
+        /// Pods from other external sources (<c>:git</c>, <c>:podspec</c>) are ignored.
+        /// </summary>
+        internal static List<KeyValuePair<string, string>> ReadPathPods(IEnumerable<string> podfileLockLines)
+        {
+            var result = new List<KeyValuePair<string, string>>();
+            var inSection = false;
+            string currentPod = null;
+
+            foreach (var line in podfileLockLines)
+            {
+                if (line.Length == 0) continue;
+                if (!char.IsWhiteSpace(line[0]))
+                {
+                    inSection = line.TrimEnd() == "EXTERNAL SOURCES:";
+                    currentPod = null;
+                    continue;
+                }
+                if (!inSection) continue;
+
+                var trimmed = line.Trim();
+                var indent = line.Length - line.TrimStart().Length;
+                if (indent == 2 && trimmed.EndsWith(":", StringComparison.Ordinal))
+                {
+                    currentPod = Unquote(trimmed.Substring(0, trimmed.Length - 1));
+                }
+                else if (currentPod != null && trimmed.StartsWith(":path:", StringComparison.Ordinal))
+                {
+                    var value = Unquote(trimmed.Substring(":path:".Length).Trim());
+                    if (value.Length > 0) result.Add(new KeyValuePair<string, string>(currentPod, value));
+                }
+            }
+
+            return result;
+        }
+
+        private static string Unquote(string value)
+        {
+            if (value.Length < 2) return value;
+
+            var inner = value.Substring(1, value.Length - 2);
+            if (value[0] == '\'' && value[value.Length - 1] == '\'')
+            {
+                return inner.Replace("''", "'");
+            }
+            if (value[0] != '"' || value[value.Length - 1] != '"') return value;
+
+            var builder = new System.Text.StringBuilder(inner.Length);
+            for (var i = 0; i < inner.Length; i++)
+            {
+                if (inner[i] == '\\' && i + 1 < inner.Length)
+                {
+                    i++;
+                    builder.Append(inner[i] == 't' ? '\t' : inner[i]);
+                }
+                else
+                {
+                    builder.Append(inner[i]);
+                }
+            }
+            return builder.ToString();
         }
 
         /// <summary>Checks that a discovered xcframework directory has a root Info.plist manifest.</summary>
