@@ -29,6 +29,11 @@
 <!--        <androidPackage spec="io.cloudx:adapter-admob:1.5.0.0"/>-->
 <!--        <androidPackage spec="io.cloudx:adapter-taurusx:1.19.1.1"/>-->
 <!--        <androidPackage spec="io.cloudx:adapter-bigo:6.1.0.0"/>-->
+<!--        <androidPackage spec="io.cloudx:adapter-bidmachine:3.8.0.0">
+                <repositories>
+                    <repository>https://artifactory.bidmachine.io/bidmachine</repository>
+                </repositories>
+            </androidPackage>-->
 
         <!-- Optional: MMP ad-revenue connectors (uncomment as needed; requires the MMP's own SDK in your app) -->
 <!--        <androidPackage spec="io.cloudx:connector-adjust:5.0.0.0"/>-->
@@ -56,12 +61,12 @@
     <iosPods>
         <iosPod name="CloudXCore" version="~> 3.0" minTargetSdk="13.0"/>
         <!-- Optional adapters - uncomment as needed -->
-        <!-- AppLovin requires AppLovinSDK = 13.6.3; a MAX Unity plugin pinning another AppLovinSDK version conflicts. -->
-        <!-- <iosPod name="CloudXAppLovinAdapter" version="13.6.3.1" minTargetSdk="13.0"/> -->
+        <!-- AppLovin requires AppLovinSDK = 13.6.4; a MAX Unity plugin pinning another AppLovinSDK version conflicts. -->
+        <!-- <iosPod name="CloudXAppLovinAdapter" version="13.6.4.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXMetaAdapter" version="6.22.1.0" minTargetSdk="15.0"/> -->
         <!-- <iosPod name="CloudXVungleAdapter" version="7.7.8.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXInMobiAdapter" version="11.5.0.0" minTargetSdk="13.0"/> -->
-        <!-- <iosPod name="CloudXMintegralAdapter" version="8.1.7.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXMintegralAdapter" version="8.1.7.1" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXUnityAdsAdapter" version="4.21.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXMagniteAdapterV2" version="1.0.4.2" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXMolocoAdapter" version="4.11.1.1" minTargetSdk="13.0"/> -->
@@ -72,6 +77,7 @@
         <!-- <iosPod name="CloudXMobileFuseAdapter" version="1.13.0.0" minTargetSdk="15.0"/> -->
         <!-- <iosPod name="CloudXTaurusXAdapter" version="1.18.2.1" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXBigoAdapter" version="6.1.0.0" minTargetSdk="13.0"/> -->
+        <!-- <iosPod name="CloudXBidMachineAdapter" version="3.8.2.0" minTargetSdk="13.0"/> -->
         <!-- Optional: MMP ad-revenue connectors (uncomment as needed; requires the MMP's own SDK in your app) -->
         <!-- <iosPod name="CloudXAdjustConnector" version="5.0.0.0" minTargetSdk="13.0"/> -->
         <!-- <iosPod name="CloudXAppsFlyerConnector" version="6.15.0.0" minTargetSdk="13.0"/> -->

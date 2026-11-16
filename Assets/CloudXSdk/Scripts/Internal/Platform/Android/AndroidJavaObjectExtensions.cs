@@ -25,14 +25,12 @@ internal static class AndroidJavaObjectExtensions
         var adValuesJava = javaObject.Call<AndroidJavaObject>("getAdValues");
         var adValues = adValuesJava?.ToStringDictionary();
         // Android reports an unknown mediator as "", iOS and the Editor as null; expose null everywhere.
-        var mediatorName = NullIfEmpty(javaObject.Call<string>("getMediatorName"));
-        var mediatorAdUnitId = NullIfEmpty(javaObject.Call<string>("getMediatorAdUnitId"));
+        var mediatorName = StringUtils.NullIfEmpty(javaObject.Call<string>("getMediatorName"));
+        var mediatorAdUnitId = StringUtils.NullIfEmpty(javaObject.Call<string>("getMediatorAdUnitId"));
 
         return new CloudXAd(adFormat, adUnitId, placement, networkName, networkPlacement, revenue,
             adValues, creativeId, mediatorName, mediatorAdUnitId);
     }
-
-    internal static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static CloudXAdFormat ParseCloudXAdFormat(string adFormatName)
     {

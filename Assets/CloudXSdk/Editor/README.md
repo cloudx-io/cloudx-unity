@@ -14,7 +14,7 @@ This folder contains Unity Editor-only code that is excluded from runtime builds
 The iOS build process is fully automated. When you build for iOS from Unity, the post-process script:
 
 1. Runs `pod install` automatically if dependencies are missing
-2. Adds the CloudX SKAdNetwork identifiers while preserving existing entries
+2. Adds the CloudX SKAdNetwork identifiers (`SKAdNetworkItems`) and AdAttributionKit identifiers (`AdNetworkIdentifiers`, including CloudX's own ID) while preserving existing entries
 3. Detects and embeds all dynamic frameworks from CocoaPods
 4. Configures Swift support for dependencies that require it
 

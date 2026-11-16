@@ -26,11 +26,11 @@ namespace CloudX
     /// <param name="CreativeId">Identifier of the creative served, if the network reports one. Null otherwise.</param>
     /// <param name="MediatorName">
     /// Mediator that supplied the ad, distinct from the winning network: "cloudx" for CloudX-won ads.
-    /// Null when no mediator is known, and on iOS and in the Editor until supported.
+    /// Null when no mediator is known, and in the Editor until supported.
     /// </param>
     /// <param name="MediatorAdUnitId">
     /// Ad unit identifier reported by the mediator; equals AdUnitId for CloudX-won ads.
-    /// Null when unavailable, and on iOS and in the Editor until supported.
+    /// Null when unavailable, and in the Editor until supported.
     /// </param>
     public record CloudXAd(
         CloudXAdFormat AdFormat,
